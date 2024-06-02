@@ -27,7 +27,8 @@ const IGNORE_CREDITS = [
   "TBS NEWS DIG Powered by JNN",
   "AERA dot.",
   "デイリー新潮",
-  "FRIDAY"
+  "FRIDAY",
+  "RONSPO"
 ];
 const IGNORE_KEYWORDS = ["川藤", "中畑"];
 
