@@ -29,7 +29,8 @@ const IGNORE_CREDITS = [
   "デイリー新潮",
   "FRIDAY",
   "RONSPO",
-  "中日スポーツ"
+  "中日スポーツ",
+  "共同通信"
 ];
 const IGNORE_KEYWORDS = ["川藤", "中畑"];
 
