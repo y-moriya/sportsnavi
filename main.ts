@@ -28,7 +28,8 @@ const IGNORE_CREDITS = [
   "AERA dot.",
   "デイリー新潮",
   "FRIDAY",
-  "RONSPO"
+  "RONSPO",
+  "中日スポーツ"
 ];
 const IGNORE_KEYWORDS = ["川藤", "中畑"];
 
