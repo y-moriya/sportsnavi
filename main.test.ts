@@ -1,3 +1,4 @@
+import { splitContentIntoChunks } from "./main.ts";
 import {
   filterNews,
   getNewsArticleExpert,
@@ -8,15 +9,25 @@ import { assertEquals } from "https://deno.land/std@0.194.0/testing/asserts.ts";
 // test for getNewsArticle
 Deno.test("getNewsArticle", async () => {
   const url =
-    "https://news.yahoo.co.jp/articles/1c346f4a4453923817f0436fc35a43b5fbc334c0?page=2";
+    "https://news.yahoo.co.jp/articles/9a418c146b413da37d97806e506af0f5fa3d5b2d";
   await getNewsArticleNormal(url);
 });
 
 // test for getNewsArticleExpert
 Deno.test("getNewsArticleExpert", async () => {
   const url =
-    "https://news.yahoo.co.jp/expert/articles/d735e238883cc597b8629f0597ca12c89f3edb65?page=1";
-  await getNewsArticleExpert(url);
+    "https://news.yahoo.co.jp/expert/articles/f0807da4ad35579487ad28d5e6f6e7a877e1775c?page=1";
+
+  const body = await getNewsArticleExpert(url);
+  const content = splitContentIntoChunks(body, 2000);
+  for (const chunk of content) {
+    console.log(chunk.length);
+  }
+  // const normalizedContent = normalizeNewlinesInChunks(content);
+  // for (const chunk of normalizedContent) {
+  //   console.log(chunk.length);
+  //   console.log(chunk, "\n");
+  // }
 });
 
 // // test for splitContent

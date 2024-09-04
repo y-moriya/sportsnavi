@@ -12,7 +12,7 @@ interface NewsItem {
 }
 
 const INCLUDE_TITLES = ["阪神"];
-const IGNORE_TITLES = ["虎になれ", "阪神大学", "虎のソナタ"];
+const IGNORE_TITLES = ["虎になれ", "阪神大学", "虎のソナタ", "内匠宏幸", "掛布"];
 const IGNORE_CREDITS = [
   "日テレNEWS",
   "東スポWEB",
@@ -30,9 +30,11 @@ const IGNORE_CREDITS = [
   "FRIDAY",
   "RONSPO",
   "中日スポーツ",
-  "共同通信"
+  "共同通信",
+  "時事通信",
+  "ベースボールチャンネル"
 ];
-const IGNORE_KEYWORDS = ["川藤", "中畑"];
+const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布"];
 
 function parseNewsItems(newsItems: NodeList) {
   const news = [];
@@ -198,7 +200,7 @@ export function getNewsArticleExpert(url: string): Promise<string> {
   return getNewsArticle(
     url,
     "article#uamods-article > div > header > h1",
-    "article#uamods-article > div > section > div",
+    "article#uamods-article > div > section > div > *",
   );
 }
 
