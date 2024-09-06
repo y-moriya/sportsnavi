@@ -58,7 +58,7 @@ function parseNewsItems(newsItems: NodeList) {
     });
   }
 
-  console.log(news);
+  console.log(filterNewsByCredit(news));
 
   return news;
 }
