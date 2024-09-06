@@ -58,6 +58,8 @@ function parseNewsItems(newsItems: NodeList) {
     });
   }
 
+  console.log(news);
+
   return news;
 }
 
