@@ -12,7 +12,7 @@ interface NewsItem {
 }
 
 const INCLUDE_TITLES = ["阪神"];
-const IGNORE_TITLES = ["虎になれ", "阪神大学", "虎のソナタ", "内匠宏幸", "掛布"];
+const IGNORE_TITLES = ["虎になれ", "阪神大学", "虎のソナタ", "内匠宏幸", "掛布", "寺尾で候"];
 const IGNORE_CREDITS = [
   "日テレNEWS",
   "東スポWEB",
@@ -32,7 +32,13 @@ const IGNORE_CREDITS = [
   "中日スポーツ",
   "共同通信",
   "時事通信",
-  "ベースボールチャンネル"
+  "ベースボールチャンネル",
+  "Yahoo!ニュース オリジナル THE PAGE",
+  "テレ東スポーツ",
+  "J-CASTニュース",
+  "高校野球ドットコム",
+  "Full-Count",
+  "土井麻由実"
 ];
 const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布"];
 
