@@ -265,9 +265,11 @@ async function notifyDiscordWithNewsItem(newsItem: NewsItem) {
     throw new Error("WEBHOOK_URL is not set");
   }
 
-  let getNewsArticleFn = getNewsArticleNormal;
+  const getNewsArticleFn = getNewsArticleNormal;
   if (newsItem.url.includes("expert")) {
-    getNewsArticleFn = getNewsArticleExpert;
+    // getNewsArticleFn = getNewsArticleExpert;
+    console.info(`Ignored: ${JSON.stringify(newsItem)} (expert)`);
+    return;
   }
 
   let newsContent = "";
