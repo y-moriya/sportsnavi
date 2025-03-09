@@ -12,7 +12,7 @@ interface NewsItem {
 }
 
 const INCLUDE_TITLES = ["阪神"];
-const IGNORE_TITLES = ["虎になれ", "阪神大学", "虎のソナタ", "内匠宏幸", "掛布", "寺尾で候"];
+const IGNORE_TITLES = ["虎になれ", "阪神大学", "虎のソナタ", "内匠宏幸", "掛布", "寺尾で候", "阪神戦"];
 const IGNORE_CREDITS = [
   "日テレNEWS",
   "東スポWEB",
@@ -40,7 +40,7 @@ const IGNORE_CREDITS = [
   "Full-Count",
   "土井麻由実"
 ];
-const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布"];
+const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布", "SNS", "ＳＮＳ", "旧ツイッター"];
 
 function parseNewsItems(newsItems: NodeList) {
   const news = [];
