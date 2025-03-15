@@ -311,7 +311,7 @@ async function notifyDiscord(news: Array<NewsItem>) {
 }
 
 // メインの処理
-Deno.cron("fetch newsItems and notify discord", "* * * * *", async () => {
+Deno.cron("fetch newsItems and notify discord 2", "* * * * *", async () => {
   console.info("Start cron job");
   const newsItems = await fetchNewsListPage();
   const news = parseNewsItems(newsItems);
