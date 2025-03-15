@@ -39,7 +39,8 @@ const IGNORE_CREDITS = [
   "高校野球ドットコム",
   "Full-Count",
   "土井麻由実",
-  "現代ビジネス"
+  "現代ビジネス",
+  "THE ANSWER"
 ];
 const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布", "SNS", "ＳＮＳ", "旧ツイッター"];
 
