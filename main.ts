@@ -72,10 +72,24 @@ function parseNewsItems(newsItems: NodeList) {
 }
 
 function filterNewsByTitle(news: Array<NewsItem>) {
-  return news.filter((newsItem) =>
-    INCLUDE_TITLES.some((title) => newsItem.title.includes(title)) &&
-    IGNORE_TITLES.every((title) => !newsItem.title.includes(title))
-  );
+  const ignoredTitles: string[] = [];
+  const filteredNews = news.filter((newsItem) => {
+    const isIncluded = INCLUDE_TITLES.some((title) => newsItem.title.includes(title));
+    const isIgnored = IGNORE_TITLES.some((title) => newsItem.title.includes(title));
+    if (isIncluded && !isIgnored) {
+      return true;
+    } else if (isIgnored) {
+      ignoredTitles.push(newsItem.title);
+      return false;
+    }
+    return false;
+  });
+
+  if (ignoredTitles.length > 0) {
+    console.log(`Ignored titles: ${ignoredTitles.join(", ")}`);
+  }
+
+  return filteredNews;
 }
 
 function filterNewsByCredit(news: Array<NewsItem>) {
