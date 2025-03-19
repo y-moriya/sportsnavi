@@ -40,7 +40,8 @@ const IGNORE_CREDITS = [
   "Full-Count",
   "土井麻由実",
   "現代ビジネス",
-  "THE ANSWER"
+  "THE ANSWER",
+  "ベースボールキング"
 ];
 const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布", "SNS", "ＳＮＳ", "旧ツイッター"];
 
