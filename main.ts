@@ -43,7 +43,7 @@ const IGNORE_CREDITS = [
   "THE ANSWER",
   "ベースボールキング"
 ];
-const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布", "SNS", "ＳＮＳ", "旧ツイッター"];
+const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布", "SNS", "ＳＮＳ", "旧ツイッター", "藤田平"];
 
 function parseNewsItems(newsItems: NodeList) {
   const news = [];
@@ -326,7 +326,7 @@ async function notifyDiscord(news: Array<NewsItem>) {
 }
 
 // メインの処理
-Deno.cron("fetch newsItems and notify discord 2", "* * * * *", async () => {
+Deno.cron("fetch newsItems and notify discord", "* * * * *", async () => {
   console.info("Start cron job");
   const newsItems = await fetchNewsListPage();
   const news = parseNewsItems(newsItems);
