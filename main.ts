@@ -43,7 +43,7 @@ const IGNORE_CREDITS = [
   "THE ANSWER",
   "ベースボールキング"
 ];
-const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布", "SNS", "ＳＮＳ", "旧ツイッター", "藤田平"];
+const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布", "SNS", "ＳＮＳ", "旧ツイッター", "藤田平", "柏原誠"];
 
 function parseNewsItems(newsItems: NodeList) {
   const news = [];
