@@ -12,7 +12,19 @@ interface NewsItem {
 }
 
 const INCLUDE_TITLES = ["阪神"];
-const IGNORE_TITLES = ["虎になれ", "阪神大学", "虎のソナタ", "内匠宏幸", "掛布", "寺尾で候", "阪神戦", "ネット", "ネット驚愕", "阪神リーグ"];
+const IGNORE_TITLES = [
+  "虎になれ",
+  "阪神大学",
+  "虎のソナタ",
+  "内匠宏幸",
+  "掛布",
+  "寺尾で候",
+  "阪神戦",
+  "ネット",
+  "ネット驚愕",
+  "阪神リーグ",
+  "鬼筆",
+];
 const IGNORE_CREDITS = [
   "日テレNEWS",
   "東スポWEB",
@@ -41,9 +53,18 @@ const IGNORE_CREDITS = [
   "土井麻由実",
   "現代ビジネス",
   "THE ANSWER",
-  "ベースボールキング"
+  "ベースボールキング",
 ];
-const IGNORE_KEYWORDS = ["川藤", "中畑", "掛布", "SNS", "ＳＮＳ", "旧ツイッター", "藤田平", "柏原誠"];
+const IGNORE_KEYWORDS = [
+  "川藤",
+  "中畑",
+  "掛布",
+  "SNS",
+  "ＳＮＳ",
+  "旧ツイッター",
+  "藤田平",
+  "柏原誠",
+];
 
 function parseNewsItems(newsItems: NodeList) {
   const news = [];
@@ -75,8 +96,12 @@ function parseNewsItems(newsItems: NodeList) {
 function filterNewsByTitle(news: Array<NewsItem>) {
   const ignoredTitles: string[] = [];
   const filteredNews = news.filter((newsItem) => {
-    const isIncluded = INCLUDE_TITLES.some((title) => newsItem.title.includes(title));
-    const isIgnored = IGNORE_TITLES.some((title) => newsItem.title.includes(title));
+    const isIncluded = INCLUDE_TITLES.some((title) =>
+      newsItem.title.includes(title)
+    );
+    const isIgnored = IGNORE_TITLES.some((title) =>
+      newsItem.title.includes(title)
+    );
     if (isIncluded && !isIgnored) {
       return true;
     } else if (isIgnored) {
