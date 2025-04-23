@@ -24,6 +24,7 @@ const IGNORE_TITLES = [
   "ネット驚愕",
   "阪神リーグ",
   "鬼筆",
+  "金村義明",
 ];
 const IGNORE_CREDITS = [
   "日テレNEWS",
