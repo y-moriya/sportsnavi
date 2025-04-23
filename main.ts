@@ -55,6 +55,7 @@ const IGNORE_CREDITS = [
   "現代ビジネス",
   "THE ANSWER",
   "ベースボールキング",
+  "AERA DIGITAL",
 ];
 const IGNORE_KEYWORDS = [
   "川藤",
