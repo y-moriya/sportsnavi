@@ -66,6 +66,7 @@ const IGNORE_KEYWORDS = [
   "旧ツイッター",
   "藤田平",
   "柏原誠",
+  "デーブ大久保",
 ];
 
 function parseNewsItems(newsItems: NodeList) {
