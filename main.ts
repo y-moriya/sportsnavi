@@ -25,7 +25,8 @@ const IGNORE_TITLES = [
   "阪神リーグ",
   "鬼筆",
   "金村義明",
-  "亀山つとむ"
+  "亀山つとむ",
+  "岡田彰布"
 ];
 const IGNORE_CREDITS = [
   "日テレNEWS",
