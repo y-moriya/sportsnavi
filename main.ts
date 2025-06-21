@@ -26,7 +26,8 @@ const IGNORE_TITLES = [
   "鬼筆",
   "金村義明",
   "亀山つとむ",
-  "岡田彰布"
+  "岡田彰布",
+  "岡田顧問"
 ];
 const IGNORE_CREDITS = [
   "日テレNEWS",
