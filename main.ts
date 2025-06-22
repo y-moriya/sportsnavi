@@ -59,6 +59,7 @@ const IGNORE_CREDITS = [
   "THE ANSWER",
   "ベースボールキング",
   "AERA DIGITAL",
+  "DAZN News",
 ];
 const IGNORE_KEYWORDS = [
   "川藤",
