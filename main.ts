@@ -27,7 +27,8 @@ const IGNORE_TITLES = [
   "金村義明",
   "亀山つとむ",
   "岡田彰布",
-  "岡田顧問"
+  "岡田顧問",
+  "広岡達朗"
 ];
 const IGNORE_CREDITS = [
   "日テレNEWS",
