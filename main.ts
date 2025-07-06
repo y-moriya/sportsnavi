@@ -72,6 +72,8 @@ const IGNORE_KEYWORDS = [
   "藤田平",
   "柏原誠",
   "デーブ大久保",
+  "畑野理之",
+  "ネット"
 ];
 
 function parseNewsItems(newsItems: NodeList) {
