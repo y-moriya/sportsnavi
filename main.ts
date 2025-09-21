@@ -29,7 +29,8 @@ const IGNORE_TITLES = [
   "岡田彰布",
   "岡田顧問",
   "広岡達朗",
-  "廣岡達朗"
+  "廣岡達朗",
+  "佐藤義則"
 ];
 const IGNORE_CREDITS = [
   "日テレNEWS",
@@ -74,7 +75,8 @@ const IGNORE_KEYWORDS = [
   "柏原誠",
   "デーブ大久保",
   "畑野理之",
-  "ネット"
+  "ネット",
+  "佐藤義則"
 ];
 
 function parseNewsItems(newsItems: NodeList) {
