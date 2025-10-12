@@ -63,6 +63,7 @@ const IGNORE_CREDITS = [
   "ベースボールキング",
   "AERA DIGITAL",
   "DAZN News",
+  "Number Web",
 ];
 const IGNORE_KEYWORDS = [
   "川藤",
