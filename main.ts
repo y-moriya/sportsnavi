@@ -21,6 +21,7 @@ type CheckArticleRequest = {
 type CheckArticleResponse = {
   is_duplicate: boolean
   similarity_score: number
+  verification_result?: boolean
   message: string
   debug_info: {
     most_similar_article: {
