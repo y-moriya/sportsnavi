@@ -11,6 +11,28 @@ interface NewsItem {
   url: string;
 }
 
+type CheckArticleRequest = {
+  media_name: string
+  url: string
+  title: string
+  content: string
+}
+
+type CheckArticleResponse = {
+  is_duplicate: boolean
+  similarity_score: number
+  message: string
+  debug_info: {
+    most_similar_article: {
+      title: string
+      url: string
+      score: number
+    } | null
+  }
+}
+
+const DUPLICATE_CHECK_URL = "https://echo-breaker.euros21st.workers.dev/api/check-article";
+
 const INCLUDE_TITLES = ["阪神"];
 const IGNORE_TITLES = [
   "虎になれ",
@@ -344,6 +366,24 @@ async function notifyDiscordWithNewsItem(newsItem: NewsItem) {
     return;
   }
 
+  // 類似する記事をすでに通知済みの場合は通知しない
+  const duplicateCheckRequestBody = convertItemToDuplicateCheckRequest(newsItem, newsContent);
+  const res = await fetch(DUPLICATE_CHECK_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(duplicateCheckRequestBody)
+  });
+
+  const checkArticleResponse = await res.json() as CheckArticleResponse;
+  console.log(checkArticleResponse);
+
+  if (checkArticleResponse.is_duplicate) {
+    console.log(`Skipped: ${JSON.stringify(newsItem)}`);
+    return;
+  }
+
   // Discord message content length limit is 2000 characters
   const MAX_CONTENT_LENGTH = 2000;
   const contentChunks = splitContentIntoChunks(newsContent, MAX_CONTENT_LENGTH);
@@ -352,6 +392,15 @@ async function notifyDiscordWithNewsItem(newsItem: NewsItem) {
   for (const chunk of normalizedContentChunks) {
     await sendDiscordMessage(webhookUrl, chunk, newsItem);
   }
+}
+
+function convertItemToDuplicateCheckRequest(item: NewsItem, content: string): CheckArticleRequest {
+  return {
+    "media_name": item.credit,
+    "title": item.title,
+    "content": content,
+    "url": item.url
+  };
 }
 
 async function notifyDiscord(news: Array<NewsItem>) {
