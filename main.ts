@@ -125,7 +125,7 @@ function parseNewsItems(newsItems: NodeList) {
     });
   }
 
-  console.log(filterNewsByCredit(news));
+  // console.log(filterNewsByCredit(news));
 
   return news;
 }
