@@ -210,7 +210,7 @@ async function filterUnregisteredNewsItems(
     { uris: items.map((item) => item.url) },
   );
   const json: { uri: string; registered: boolean }[] = await res.json();
-  console.log(json);
+  // console.log(json);
   return items.filter((item) =>
     !json.find((j) => j.uri === item.url)?.registered
   );
