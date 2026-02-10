@@ -409,13 +409,13 @@ async function notifyDiscord(news: Array<NewsItem>) {
     const isRegistered = await registerNewsItem(newsItem);
     if (!isRegistered) {
       await notifyDiscordWithNewsItem(newsItem);
-      await new Promise((resolve) => setTimeout(resolve, 60 * 1000));
+      await new Promise((resolve) => setTimeout(resolve, 90 * 1000));
     }
   }
 }
 
 // メインの処理
-Deno.cron("fetch newsItems and notify discord", "*/10 * * * *", async () => {
+Deno.cron("fetch newsItems and notify discord", "*/15 * * * *", async () => {
   console.info("Start cron job");
   const newsItems = await fetchNewsListPage();
   const news = parseNewsItems(newsItems);
