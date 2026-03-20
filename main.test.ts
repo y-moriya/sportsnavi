@@ -4,7 +4,7 @@ import {
   getNewsArticleExpert,
   getNewsArticleNormal,
 } from "./main.ts";
-import { assertEquals } from "https://deno.land/std@0.194.0/testing/asserts.ts";
+import { assertEquals } from "@std/assert";
 
 // test for getNewsArticle
 Deno.test("getNewsArticle", async () => {

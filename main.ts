@@ -2,8 +2,8 @@ import {
   DOMParser,
   type Element,
   type NodeList,
-} from "https://deno.land/x/deno_dom@v0.1.45/deno-dom-wasm.ts";
-import "https://deno.land/std@0.203.0/dotenv/load.ts";
+} from "deno_dom";
+import "@std/dotenv/load";
 
 interface NewsItem {
   title: string;
@@ -251,6 +251,7 @@ export async function getNewsArticle(
   const newsArticlePage = await fetch(url);
 
   if (!newsArticlePage.ok) {
+    await newsArticlePage.body?.cancel();
     return "";
   }
 
@@ -415,11 +416,25 @@ async function notifyDiscord(news: Array<NewsItem>) {
 }
 
 // メインの処理
-Deno.cron("fetch newsItems and notify discord", "*/15 * * * *", async () => {
-  console.info("Start cron job");
-  const newsItems = await fetchNewsListPage();
-  const news = parseNewsItems(newsItems);
-  const filteredNews = filterNews(news);
-  const unregisteredNews = await filterUnregisteredNewsItems(filteredNews);
-  await notifyDiscord(unregisteredNews);
-});
+if (import.meta.main) {
+  Deno.cron("fetch newsItems and notify discord", "*/15 * * * *", async () => {
+    console.info("Start cron job");
+    const newsItems = await fetchNewsListPage();
+    const news = parseNewsItems(newsItems);
+    const filteredNews = filterNews(news);
+    const unregisteredNews = await filterUnregisteredNewsItems(filteredNews);
+    await notifyDiscord(unregisteredNews);
+  });
+
+  // Deno Deployでデプロイメントをアクティブに保ち、
+  // ヘルスチェックを可能にするためのダミーサーバー
+  Deno.serve((_req) => {
+    return new Response(
+      "SportsNavi News Fetcher is running. Cron schedule: */15 * * * *",
+      {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      },
+    );
+  });
+}
