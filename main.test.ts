@@ -3,6 +3,8 @@ import {
   filterNews,
   getNewsArticleExpert,
   getNewsArticleNormal,
+  registerNewsItem,
+  filterUnregisteredNewsItems,
 } from "./main.ts";
 import { assertEquals } from "@std/assert";
 
@@ -23,65 +25,7 @@ Deno.test("getNewsArticleExpert", async () => {
   for (const chunk of content) {
     console.log(chunk.length);
   }
-  // const normalizedContent = normalizeNewlinesInChunks(content);
-  // for (const chunk of normalizedContent) {
-  //   console.log(chunk.length);
-  //   console.log(chunk, "\n");
-  // }
 });
-
-// // test for splitContent
-// Deno.test("splitContentIntoChunks", () => {
-//   const originalContent =
-//     `【プレビュー】盗塁阻止率6割超のDeNA・山本祐大に注目！7連勝中の首位・阪神と最下位・ヤクルトが対戦、ほか ｜ セ・リーグ ｜ プロ野球
-
-// 4月26日～28日に開催されるセ・リーグの見どころを紹介。
-
-// 5位のDeNAと2位の巨人が対戦。
-
-// DeNAの注目は山本祐大。
-// 規定打席にこそ達していないものの、16試合で打率.333、9打点の好成績。
-// 現在3試合連続でマルチ安打を放つなど好調だ。
-// さらに最大の武器である強肩を活かした盗塁阻止率は、リーグトップの.615をマークしている。
-// 攻守で存在感を示す正捕手候補に注目だ。
-
-// 一方の巨人は、髙橋礼に注目。
-// トレードで巨人にやってきたアンダースロー右腕は、開幕ローテーションを掴みここまで毎週日曜日に登板。
-// 4試合で2勝0敗、防御率0.38と圧巻のパフォーマンスを発揮している。
-// 2019年新人王に輝いた男が、巨人の覇権奪回の鍵になるかもしれない。
-
-// 首位の阪神と最下位のヤクルトが対戦。
-
-// 引き分けを挟んで7連勝と絶好調の阪神。
-// 注目はチームを支えるブルペン陣だ。
-// クローザーのゲラは12試合で0勝1敗、4セーブ、防御率0.75、岩崎優は10試合で1勝0敗、3セーブ、防御率0.00、桐敷拓馬は10試合で2勝0敗、防御率1.86と抜群の安定感を誇っている。
-// さらに島本浩也らも好投を見せており、盤石の布陣を築いている。
-
-// 一方のヤクルトは、オスナ、サンタナの助っ人砲に注目。
-// オスナはここまで21試合で打率.299、5本塁打、17打点、サンタナは21試合で打率.315、2本塁打、11打点の好成績。
-// 25日の広島戦ではオスナの今季2本目の満塁弾、サンタナのサヨナラ弾で勝利した。
-// 阪神中継ぎ陣との勝負は見どころ充分だ。
-
-// 3位の中日と、1ゲーム差で追う4位の広島が対戦（27、28日）。
-
-// 直近7試合で1勝6敗と調子を落としている中日。
-// 注目は岡林勇希だ。
-// 19日の阪神戦から復帰し、主に1番で出場。
-// 6試合で打率.136、1打点と本来の調子ではないものの、25日の巨人戦では初の長打となるタイムリーツーベースも放った。
-// 調子を落としているチームを勢いづける活躍に期待したい。
-
-// 直近7試合で4勝1敗2分と好調の広島は、野間峻祥に注目。
-// 主に1番、3番に入り、ここまで17試合で打率.318、7打点。
-// 打率はリーグトップの好成績だ。
-// 二塁打7本、三塁打2本はいずれもリーグトップタイ。
-// 快足を活かした活躍を見せている。
-
-//  <https://news.yahoo.co.jp/articles/6cdc8bea71fe5154db7be1a58832ac3a51ed5803>`;
-
-//   const contents = splitContentIntoChunks(originalContent, 2000);
-//   const convertedContent = normalizeNewlinesInChunks(contents);
-//   Deno.stdout.writeSync(new TextEncoder().encode(convertedContent.join("\n")));
-// });
 
 // test for filterNews
 Deno.test("filterNews", () => {
@@ -114,4 +58,35 @@ Deno.test("filterNews", () => {
 
   const filteredNews3 = filterNews([news3]);
   assertEquals(filteredNews3, []);
+});
+
+// test for KV registration
+Deno.test("KV registration and filtering", async () => {
+  const newsItem = {
+    title: "阪神テスト記事",
+    credit: "テスト",
+    url: "https://example.com/test-article",
+  };
+
+  // Clear before test if possible, but since it's a temp KV for testing, it's fine
+  // Actually, let's use a unique URL to avoid interference
+  const uniqueUrl = `https://example.com/test-article-${Date.now()}`;
+  const testItem = { ...newsItem, url: uniqueUrl };
+
+  // Should not be registered initially
+  const unregistered = await filterUnregisteredNewsItems([testItem]);
+  assertEquals(unregistered.length, 1);
+  assertEquals(unregistered[0].url, uniqueUrl);
+
+  // Register it
+  const isRegisteredFirst = await registerNewsItem(testItem);
+  assertEquals(isRegisteredFirst, false); // Returns false when newly registered
+
+  // Should be registered now
+  const isRegisteredSecond = await registerNewsItem(testItem);
+  assertEquals(isRegisteredSecond, true); // Returns true when already registered
+
+  // Should be filtered out now
+  const unregisteredAfter = await filterUnregisteredNewsItems([testItem]);
+  assertEquals(unregisteredAfter.length, 0);
 });

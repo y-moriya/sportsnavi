@@ -34,6 +34,8 @@ type CheckArticleResponse = {
 
 const DUPLICATE_CHECK_URL = "https://echo-breaker.euros21st.workers.dev/api/check-article";
 
+const kv = await Deno.openKv();
+
 const INCLUDE_TITLES = ["阪神"];
 const IGNORE_TITLES = [
   "虎になれ",
@@ -183,51 +185,24 @@ async function fetchNewsListPage() {
   return newsItems;
 }
 
-async function sendRequestToSupabase(
-  url: string,
-  method: string,
-  body: object,
-): Promise<Response> {
-  return await fetch(
-    url,
-    {
-      method: method,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_KEY")}`,
-      },
-      body: JSON.stringify(body),
-    },
-  );
-}
-
-async function filterUnregisteredNewsItems(
+export async function filterUnregisteredNewsItems(
   items: Array<NewsItem>,
 ): Promise<Array<NewsItem>> {
-  const res = await sendRequestToSupabase(
-    Deno.env.get("SUPABASE_MULTI_URL") as string,
-    "POST",
-    { uris: items.map((item) => item.url) },
-  );
-  const json: { uri: string; registered: boolean }[] = await res.json();
-  // console.log(json);
-  return items.filter((item) =>
-    !json.find((j) => j.uri === item.url)?.registered
-  );
+  if (items.length === 0) return [];
+  const keys = items.map((item) => ["articles", item.url]);
+  const results = await kv.getMany<boolean[]>(keys);
+  return items.filter((_, index) => !results[index].value);
 }
 
-async function registerNewsItem(newsItem: NewsItem) {
-  const res = await sendRequestToSupabase(
-    Deno.env.get("SUPABASE_URL") as string,
-    "POST",
-    { uri: newsItem.url },
-  );
-  const json = await res.json();
-  if (json.registered) {
+export async function registerNewsItem(newsItem: NewsItem) {
+  const key = ["articles", newsItem.url];
+  const res = await kv.get<boolean>(key);
+  if (res.value) {
     console.info(`Already registered: ${JSON.stringify(newsItem)}`);
     return true;
   }
 
+  await kv.set(key, true, { expireIn: 24 * 60 * 60 * 1000 });
   console.info(`Registering: ${JSON.stringify(newsItem)}`);
   return false;
 }
