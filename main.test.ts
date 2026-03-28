@@ -90,3 +90,15 @@ Deno.test("KV registration and filtering", async () => {
   const unregisteredAfter = await filterUnregisteredNewsItems([testItem]);
   assertEquals(unregisteredAfter.length, 0);
 });
+
+// Reproduction of Deno KV getMany limit (max 10)
+Deno.test("KV getMany limit", async () => {
+  const items = Array.from({ length: 11 }, (_, i) => ({
+    title: `阪神テスト記事${i}`,
+    credit: "テスト",
+    url: `https://example.com/test-article-${i}`,
+  }));
+
+  // This should fail before the fix
+  await filterUnregisteredNewsItems(items);
+});

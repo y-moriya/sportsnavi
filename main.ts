@@ -190,7 +190,13 @@ export async function filterUnregisteredNewsItems(
 ): Promise<Array<NewsItem>> {
   if (items.length === 0) return [];
   const keys = items.map((item) => ["articles", item.url]);
-  const results = await kv.getMany<boolean[]>(keys);
+  const results: Deno.KvEntryMaybe<boolean>[] = [];
+  const chunkSize = 10;
+  for (let i = 0; i < keys.length; i += chunkSize) {
+    const chunk = keys.slice(i, i + chunkSize);
+    const chunkResults = await kv.getMany<boolean[]>(chunk);
+    results.push(...chunkResults);
+  }
   return items.filter((_, index) => !results[index].value);
 }
 
