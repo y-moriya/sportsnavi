@@ -224,6 +224,12 @@ export function normalizeNewlines(text: string): string {
   return normalizedLine;
 }
 
+export function filterPhotoLines(text: string): string {
+  const lines = text.split('\n');
+  const filteredLines = lines.filter(line => !line.trim().startsWith('【写真】') && !line.trim().startsWith('【写真あり】'));
+  return filteredLines.join('\n');
+}
+
 export async function getNewsArticle(
   url: string,
   headerSelector: string,
@@ -246,10 +252,11 @@ export async function getNewsArticle(
   let newsBody = "";
   const pageRegex = /\d+\/\d+ページ/;
   for (const paragraph of paragraphElements ?? []) {
-    if (pageRegex.test(paragraph.textContent ?? "")) {
+    const filteredText = filterPhotoLines(paragraph.textContent ?? "");
+    if (pageRegex.test(filteredText)) {
       continue;
     }
-    newsBody += `${paragraph.textContent}\n`;
+    newsBody += `${filteredText}\n`;
   }
   let content = newsHeader && url.endsWith("1") ? `${newsHeader} \n\n\n` : "";
   content += normalizeNewlines(newsBody);
