@@ -89,6 +89,7 @@ const IGNORE_CREDITS = [
   "AERA DIGITAL",
   "DAZN News",
   "Number Web",
+  "スポーティングニュース日本版",
 ];
 const IGNORE_KEYWORDS = [
   "川藤",
