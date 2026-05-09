@@ -103,7 +103,8 @@ const IGNORE_KEYWORDS = [
   "デーブ大久保",
   "畑野理之",
   "ネット",
-  "佐藤義則"
+  "佐藤義則",
+  "ファンは「"
 ];
 
 function parseNewsItems(newsItems: NodeList) {
