@@ -104,7 +104,8 @@ const IGNORE_KEYWORDS = [
   "畑野理之",
   "ネット",
   "佐藤義則",
-  "ファンは「"
+  "ファンは「",
+  "江本"
 ];
 
 function parseNewsItems(newsItems: NodeList) {
