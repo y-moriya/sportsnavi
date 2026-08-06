@@ -90,6 +90,7 @@ const IGNORE_CREDITS = [
   "DAZN News",
   "Number Web",
   "スポーティングニュース日本版",
+  "週刊女性PRIME"
 ];
 const IGNORE_KEYWORDS = [
   "川藤",
