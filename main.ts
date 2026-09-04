@@ -90,7 +90,8 @@ const IGNORE_CREDITS = [
   "DAZN News",
   "Number Web",
   "スポーティングニュース日本版",
-  "週刊女性PRIME"
+  "週刊女性PRIME",
+  "THE DIGEST"
 ];
 const IGNORE_KEYWORDS = [
   "川藤",
@@ -108,7 +109,8 @@ const IGNORE_KEYWORDS = [
   "ファンは「",
   "Xでは",
   "Ｘでは",
-  "江本"
+  "江本",
+  "ファン"
 ];
 
 function parseNewsItems(newsItems: NodeList) {
