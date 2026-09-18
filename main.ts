@@ -110,7 +110,8 @@ const IGNORE_KEYWORDS = [
   "Xでは",
   "Ｘでは",
   "江本",
-  "ファン"
+  "ファン",
+  "高木豊"
 ];
 
 function parseNewsItems(newsItems: NodeList) {
