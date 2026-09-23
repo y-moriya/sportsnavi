@@ -91,7 +91,8 @@ const IGNORE_CREDITS = [
   "Number Web",
   "スポーティングニュース日本版",
   "週刊女性PRIME",
-  "THE DIGEST"
+  "THE DIGEST",
+  "スポニチアネックス"
 ];
 const IGNORE_KEYWORDS = [
   "川藤",
