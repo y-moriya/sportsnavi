@@ -224,14 +224,7 @@ export async function registerNewsItem(newsItem: NewsItem) {
 }
 
 export function normalizeNewlines(text: string): string {
-  let normalizedLine = text.replace(/^－/ig, "\n\n－").replaceAll(
-    "。",
-    "。\n\n",
-  ).replace(/」$/ig, "」\n\n");
-  normalizedLine = text.replace(/\n{3,}/g, "<3br>");
-  normalizedLine = normalizedLine.replace(/\<3br\>/g, "\n\n");
-
-  return normalizedLine;
+  return text.replace(/\n{3,}/g, "\n\n");
 }
 
 export function filterPhotoLines(text: string): string {
@@ -257,8 +250,14 @@ export async function getNewsArticle(
     newsArticleBody,
     "text/html",
   );
-  const newsHeader = newsArticleDoc?.querySelector(headerSelector)?.textContent;
-  const paragraphElements = newsArticleDoc?.querySelectorAll(bodySelector);
+  if (!newsArticleDoc) {
+    return "";
+  }
+  for (const br of newsArticleDoc.querySelectorAll("br")) {
+    (br as Element).replaceWith(newsArticleDoc.createTextNode("\n"));
+  }
+  const newsHeader = newsArticleDoc.querySelector(headerSelector)?.textContent;
+  const paragraphElements = newsArticleDoc.querySelectorAll(bodySelector);
   let newsBody = "";
   const pageRegex = /\d+\/\d+ページ/;
   for (const paragraph of paragraphElements ?? []) {

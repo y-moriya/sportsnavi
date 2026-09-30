@@ -1,18 +1,30 @@
-import { splitContentIntoChunks } from "./main.ts";
 import {
   filterNews,
+  filterUnregisteredNewsItems,
   getNewsArticleExpert,
   getNewsArticleNormal,
+  normalizeNewlines,
   registerNewsItem,
-  filterUnregisteredNewsItems,
+  splitContentIntoChunks,
 } from "./main.ts";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertFalse, assertStringIncludes } from "@std/assert";
+
+// test for normalizeNewlines
+Deno.test("normalizeNewlines", () => {
+  const input = "段落1\n\n\n\n段落2\n\n\n段落3";
+  assertEquals(normalizeNewlines(input), "段落1\n\n段落2\n\n段落3");
+});
 
 // test for getNewsArticle
 Deno.test("getNewsArticle", async () => {
   const url =
-    "https://news.yahoo.co.jp/articles/9a418c146b413da37d97806e506af0f5fa3d5b2d";
-  await getNewsArticleNormal(url);
+    "https://news.yahoo.co.jp/articles/2a13733c39a2af81966054ed474719f853b7f5dc?page=1";
+  const body = await getNewsArticleNormal(url);
+  assertStringIncludes(
+    body,
+    "☆阪神―ヤクルト（１８：００・甲子園）阪神＝高橋、ヤクルト＝奥川\n\n　２９日の阪神・ヤクルト戦は雨天により中止。",
+  );
+  assertFalse(body.includes("【動画】"));
 });
 
 // test for getNewsArticleExpert
