@@ -229,7 +229,7 @@ export function normalizeNewlines(text: string): string {
 
 export function filterPhotoLines(text: string): string {
   const lines = text.split('\n');
-  const filteredLines = lines.filter(line => !line.trim().startsWith('【写真】') && !line.trim().startsWith('【写真あり】') && !line.trim().startsWith('【動画】'));
+  const filteredLines = lines.filter(line => !/^【[^】]+】/.test(line.trim()));
   return filteredLines.join('\n');
 }
 

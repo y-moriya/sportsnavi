@@ -1,5 +1,6 @@
 import {
   filterNews,
+  filterPhotoLines,
   filterUnregisteredNewsItems,
   getNewsArticleExpert,
   getNewsArticleNormal,
@@ -8,6 +9,28 @@ import {
   splitContentIntoChunks,
 } from "./main.ts";
 import { assertEquals, assertFalse, assertStringIncludes } from "@std/assert";
+
+// test for filterPhotoLines
+Deno.test("filterPhotoLines removes lines starting with 【...】", () => {
+  const text = [
+    "通常の文章です。",
+    "【写真】マウンドの投手",
+    "　【写真あり】ベンチの様子",
+    "【動画】ホームランシーン",
+    "【セ・リーグ順位表】最新順位",
+    "【一覧】戦力外通告一覧",
+    "文中に【注釈】がある文章です。",
+    "最後の文章です。",
+  ].join("\n");
+
+  const expected = [
+    "通常の文章です。",
+    "文中に【注釈】がある文章です。",
+    "最後の文章です。",
+  ].join("\n");
+
+  assertEquals(filterPhotoLines(text), expected);
+});
 
 // test for normalizeNewlines
 Deno.test("normalizeNewlines", () => {
