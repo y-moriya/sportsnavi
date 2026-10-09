@@ -149,4 +149,42 @@ describe("sportsnavi main", () => {
     const text = await res.text();
     expect(text).toContain("SportsNavi News Fetcher is running");
   });
+
+  it("handles non-200 response from duplicate check API gracefully with descriptive error", async () => {
+    const mockKv = new MockKVNamespace() as unknown as KVNamespace;
+    const mockEchoBreaker = {
+      fetch: vi.fn(async () => {
+        return new Response("error code: 1042\n", { status: 403 });
+      }),
+    } as unknown as Fetcher;
+
+    const env: Env = {
+      SPORTSNAVI_KV: mockKv,
+      ECHO_BREAKER: mockEchoBreaker,
+      WEBHOOK_URL: "https://discord.com/api/webhooks/dummy/dummy",
+    };
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => {
+      return new Response("<h1>記事タイトル</h1><p>記事本文</p>", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const testItem: NewsItem = {
+        title: "阪神テスト記事",
+        credit: "テスト",
+        url: "https://news.yahoo.co.jp/articles/sample1",
+      };
+
+      await expect(
+        worker &&
+          import("./main").then((m) =>
+            m.notifyDiscordWithNewsItem(testItem, env, new Logger({ appName: "test" })),
+          ),
+      ).rejects.toThrow(/Duplicate check API returned status 403: error code: 1042/);
+      expect(mockEchoBreaker.fetch).toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

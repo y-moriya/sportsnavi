@@ -13,6 +13,12 @@
       "id": "f8a7258ce95a4b1c92a03d597a431e7a"
     }
   ],
+  "services": [
+    {
+      "binding": "ECHO_BREAKER",
+      "service": "echo-breaker"
+    }
+  ],
   "routes": [
     {
       "pattern": "sportsnavi.gunjobiyori.com",

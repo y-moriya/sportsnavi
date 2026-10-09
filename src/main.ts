@@ -3,6 +3,7 @@ import { Logger, logger } from "./logger";
 
 export interface Env {
   SPORTSNAVI_KV: KVNamespace;
+  ECHO_BREAKER?: Fetcher;
   WEBHOOK_URL?: string;
   AXIOM_DATASET?: string;
   AXIOM_TOKEN?: string;
@@ -371,9 +372,14 @@ export function convertItemToDuplicateCheckRequest(
 
 export async function notifyDiscordWithNewsItem(
   newsItem: NewsItem,
-  webhookUrl: string,
+  env: Env,
   log: Logger = logger,
 ): Promise<void> {
+  const webhookUrl = env.WEBHOOK_URL;
+  if (!webhookUrl) {
+    throw new Error("WEBHOOK_URL is not set");
+  }
+
   const getNewsArticleFn = getNewsArticleNormal;
   if (newsItem.url.includes("expert")) {
     log.info("Ignored expert news item", { item: newsItem });
@@ -399,13 +405,25 @@ export async function notifyDiscordWithNewsItem(
     newsItem,
     newsContent,
   );
-  const res = await fetch(DUPLICATE_CHECK_URL, {
+
+  const fetcher = env.ECHO_BREAKER
+    ? env.ECHO_BREAKER.fetch.bind(env.ECHO_BREAKER)
+    : globalThis.fetch;
+
+  const res = await fetcher(DUPLICATE_CHECK_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(duplicateCheckRequestBody),
   });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(
+      `Duplicate check API returned status ${res.status}: ${errorText}`,
+    );
+  }
 
   const checkArticleResponse = (await res.json()) as CheckArticleResponse;
   log.info("Duplicate check completed", {
@@ -448,7 +466,7 @@ export async function notifyDiscord(
   for (const newsItem of news) {
     const isRegistered = await registerNewsItem(newsItem, env.SPORTSNAVI_KV, log);
     if (!isRegistered) {
-      await notifyDiscordWithNewsItem(newsItem, webhookUrl, log);
+      await notifyDiscordWithNewsItem(newsItem, env, log);
       if (intervalMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
