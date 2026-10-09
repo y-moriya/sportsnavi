@@ -28,13 +28,16 @@ export class Logger {
 
   constructor(options: LoggerOptions = {}) {
     this.appName = options.appName ?? "sportsnavi";
+    const isTest =
+      typeof process !== "undefined" &&
+      (process.env?.NODE_ENV === "test" || Boolean(process.env?.VITEST));
     this.dataset =
       options.dataset ??
-      (typeof process !== "undefined" ? process.env?.AXIOM_DATASET : undefined) ??
+      (!isTest && typeof process !== "undefined" ? process.env?.AXIOM_DATASET : undefined) ??
       "personal-apps";
     const token =
       options.token ??
-      (typeof process !== "undefined" ? process.env?.AXIOM_TOKEN : undefined);
+      (!isTest && typeof process !== "undefined" ? process.env?.AXIOM_TOKEN : undefined);
     this.token = token ? token.trim() : undefined;
   }
 

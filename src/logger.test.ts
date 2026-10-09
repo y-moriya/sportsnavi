@@ -6,15 +6,31 @@ describe("Logger", () => {
     vi.restoreAllMocks();
   });
 
-  it("formats console and enqueues events without throwing when no token", async () => {
+  it("formats console and does not call fetch when no token is provided", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
     const logger = new Logger({ appName: "test-app" });
     logger.info("Test info message", { key: "value" });
     logger.warn("Test warn message");
     logger.error("Test error message", new Error("Sample error"));
     await logger.flush();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("sends payload to Axiom when token is present", async () => {
+  it("does not load process.env.AXIOM_TOKEN in test environment", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const originalToken = process.env.AXIOM_TOKEN;
+    try {
+      process.env.AXIOM_TOKEN = "accidental-real-token";
+      const logger = new Logger({ appName: "test-app" });
+      logger.error("Sample error message", new Error("Sample error"));
+      await logger.flush();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      process.env.AXIOM_TOKEN = originalToken;
+    }
+  });
+
+  it("sends payload to mocked Axiom endpoint when token is explicitly provided", async () => {
     let requestedUrl = "";
     let requestedHeaders: HeadersInit | undefined;
     let requestedBody = "";
