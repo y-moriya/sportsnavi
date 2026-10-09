@@ -4,6 +4,7 @@ import {
   type NodeList,
 } from "deno_dom";
 import "@std/dotenv/load";
+import { logger } from "./logger.ts";
 
 interface NewsItem {
   title: string;
@@ -161,7 +162,7 @@ function filterNewsByTitle(news: Array<NewsItem>) {
   });
 
   if (ignoredTitles.length > 0) {
-    console.log(`Ignored titles: ${ignoredTitles.join(", ")}`);
+    logger.info("Filtered out news items by title", { ignoredTitles });
   }
 
   return filteredNews;
@@ -214,12 +215,12 @@ export async function registerNewsItem(newsItem: NewsItem) {
   const key = ["articles", newsItem.url];
   const res = await kv.get<boolean>(key);
   if (res.value) {
-    console.info(`Already registered: ${JSON.stringify(newsItem)}`);
+    logger.info("News item already registered", { item: newsItem });
     return true;
   }
 
   await kv.set(key, true, { expireIn: 24 * 60 * 60 * 1000 });
-  console.info(`Registering: ${JSON.stringify(newsItem)}`);
+  logger.info("Registering news item", { item: newsItem });
   return false;
 }
 
@@ -269,7 +270,7 @@ export async function getNewsArticle(
   }
   let content = newsHeader && url.endsWith("1") ? `${newsHeader} \n\n\n` : "";
   content += normalizeNewlines(newsBody);
-  console.info(content);
+  logger.info("Retrieved article page", { url, contentLength: content.length });
   return content;
 }
 
@@ -311,7 +312,11 @@ async function sendDiscordMessage(
       `Failed to send discord notification: ${discordResponse.statusText}`,
     );
   }
-  console.log({ content, discordResponse });
+  logger.info("Sent Discord message", {
+    credit: newsItem.credit,
+    title: newsItem.title,
+    status: discordResponse.status,
+  });
 }
 
 export function splitContentIntoChunks(
@@ -345,7 +350,7 @@ async function notifyDiscordWithNewsItem(newsItem: NewsItem) {
   const getNewsArticleFn = getNewsArticleNormal;
   if (newsItem.url.includes("expert")) {
     // getNewsArticleFn = getNewsArticleExpert;
-    console.info(`Ignored: ${JSON.stringify(newsItem)} (expert)`);
+    logger.info("Ignored expert news item", { item: newsItem });
     return;
   }
 
@@ -361,7 +366,7 @@ async function notifyDiscordWithNewsItem(newsItem: NewsItem) {
 
   // newsContentに無視する単語が含まれている場合は通知しない
   if (IGNORE_KEYWORDS.some((keyword) => newsContent.includes(keyword))) {
-    console.info(`Ignored: ${JSON.stringify(newsItem)}`);
+    logger.info("Ignored news item due to keywords", { item: newsItem });
     return;
   }
 
@@ -376,10 +381,17 @@ async function notifyDiscordWithNewsItem(newsItem: NewsItem) {
   });
 
   const checkArticleResponse = await res.json() as CheckArticleResponse;
-  console.log(checkArticleResponse);
+  logger.info("Duplicate check completed", {
+    item: newsItem,
+    isDuplicate: checkArticleResponse.is_duplicate,
+    score: checkArticleResponse.similarity_score,
+  });
 
   if (checkArticleResponse.is_duplicate) {
-    console.log(`Skipped: ${JSON.stringify(newsItem)}`);
+    logger.info("Skipped duplicate news item", {
+      item: newsItem,
+      debugInfo: checkArticleResponse.debug_info,
+    });
     return;
   }
 
@@ -415,17 +427,31 @@ async function notifyDiscord(news: Array<NewsItem>) {
 // メインの処理
 if (import.meta.main) {
   Deno.cron("fetch newsItems and notify discord", "*/15 * * * *", async () => {
-    console.info("Start cron job");
-    const newsItems = await fetchNewsListPage();
-    const news = parseNewsItems(newsItems);
-    const filteredNews = filterNews(news);
-    const unregisteredNews = await filterUnregisteredNewsItems(filteredNews);
-    await notifyDiscord(unregisteredNews);
+    logger.info("Start cron job");
+    try {
+      const newsItems = await fetchNewsListPage();
+      const news = parseNewsItems(newsItems);
+      const filteredNews = filterNews(news);
+      const unregisteredNews = await filterUnregisteredNewsItems(filteredNews);
+      logger.info("News items prepared for notification", {
+        rawCount: news.length,
+        filteredCount: filteredNews.length,
+        unregisteredCount: unregisteredNews.length,
+      });
+      await notifyDiscord(unregisteredNews);
+      logger.info("Cron job completed successfully");
+    } catch (err) {
+      logger.error("Cron job failed", err);
+    } finally {
+      await logger.flush();
+    }
   });
 
   // Deno Deployでデプロイメントをアクティブに保ち、
   // ヘルスチェックを可能にするためのダミーサーバー
-  Deno.serve((_req) => {
+  Deno.serve((req) => {
+    const url = new URL(req.url);
+    logger.info("Health check ping received", { path: url.pathname });
     return new Response(
       "SportsNavi News Fetcher is running. Cron schedule: */15 * * * *",
       {
