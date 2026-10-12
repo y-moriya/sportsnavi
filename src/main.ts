@@ -1,4 +1,3 @@
-import { DOMParser } from "linkedom";
 import { Logger, logger } from "./logger";
 
 export interface Env {
@@ -121,7 +120,88 @@ export const IGNORE_KEYWORDS = [
   "高木豊",
 ];
 
-export function parseNewsItems(newsItems: Iterable<any>): NewsItem[] {
+export const MAX_NOTIFICATIONS_PER_RUN = 5;
+
+interface RawNewsItem {
+  title?: string;
+  credit?: string;
+  url?: string;
+}
+
+/**
+ * HTMLRewriter を使用してスポーツナビのニュース一覧をストリーミングパース
+ */
+export async function parseNewsListWithHTMLRewriter(
+  response: Response,
+): Promise<NewsItem[]> {
+  const items: NewsItem[] = [];
+  let currentItem: RawNewsItem | null = null;
+  let capturingField: "title" | "credit" | null = null;
+
+  const rewriter = new HTMLRewriter()
+    .on(".cm-timeLine__item", {
+      element(el) {
+        currentItem = {};
+        el.onEndTag(() => {
+          if (currentItem?.title && currentItem?.credit && currentItem?.url) {
+            items.push({
+              title: currentItem.title.trim(),
+              credit: currentItem.credit.trim(),
+              url: currentItem.url.trim(),
+            });
+          }
+          currentItem = null;
+        });
+      },
+    })
+    .on(".cm-timeLine__itemArticleLink", {
+      element(el) {
+        const href = el.getAttribute("href");
+        if (currentItem && href) {
+          currentItem.url = href;
+        }
+      },
+    })
+    .on(".cm-timeLine__itemTitle", {
+      element(el) {
+        capturingField = "title";
+        if (currentItem) currentItem.title = "";
+        el.onEndTag(() => {
+          capturingField = null;
+        });
+      },
+      text(text) {
+        if (capturingField === "title" && currentItem) {
+          currentItem.title = (currentItem.title || "") + text.text;
+        }
+      },
+    })
+    .on(".cm-timeLine__itemCredit", {
+      element(el) {
+        capturingField = "credit";
+        if (currentItem) currentItem.credit = "";
+        el.onEndTag(() => {
+          capturingField = null;
+        });
+      },
+      text(text) {
+        if (capturingField === "credit" && currentItem) {
+          currentItem.credit = (currentItem.credit || "") + text.text;
+        }
+      },
+    });
+
+  await rewriter.transform(response).arrayBuffer();
+  return items;
+}
+
+/**
+ * 後方互換性のための parseNewsItems
+ */
+export function parseNewsItems(newsItems: any): NewsItem[] {
+  if (Array.isArray(newsItems)) {
+    return newsItems;
+  }
   const news: NewsItem[] = [];
   for (const newsItem of newsItems) {
     const title = newsItem.querySelector?.(".cm-timeLine__itemTitle")?.textContent;
@@ -138,7 +218,6 @@ export function parseNewsItems(newsItems: Iterable<any>): NewsItem[] {
       url,
     });
   }
-
   return news;
 }
 
@@ -149,10 +228,10 @@ export function filterNewsByTitle(
   const ignoredTitles: string[] = [];
   const filteredNews = news.filter((newsItem) => {
     const isIncluded = INCLUDE_TITLES.some((title) =>
-      newsItem.title.includes(title)
+      newsItem.title.includes(title),
     );
     const isIgnored = IGNORE_TITLES.some((title) =>
-      newsItem.title.includes(title)
+      newsItem.title.includes(title),
     );
     if (isIncluded && !isIgnored) {
       return true;
@@ -183,22 +262,14 @@ export function filterNews(
   return newsFilteredByTitleAndCredit;
 }
 
-export async function fetchNewsListPage(): Promise<any> {
+export async function fetchNewsListPage(): Promise<NewsItem[]> {
   const newsListPage = await fetch(
     "https://sports.yahoo.co.jp/list/news/npb?genre=npb&team=5",
   );
-  const newsListBody = await newsListPage.text();
-  const newsListDoc = new DOMParser().parseFromString(
-    newsListBody,
-    "text/html",
-  );
-  const newsItems = newsListDoc?.querySelectorAll?.(".cm-timeLine__item");
-
-  if (!newsItems) {
-    throw new Error("Failed to find news items");
+  if (!newsListPage.ok) {
+    throw new Error(`Failed to fetch news list: ${newsListPage.status}`);
   }
-
-  return newsItems;
+  return parseNewsListWithHTMLRewriter(newsListPage);
 }
 
 export async function filterUnregisteredNewsItems(
@@ -216,12 +287,15 @@ export async function registerNewsItem(
   newsItem: NewsItem,
   kv: KVNamespace,
   log: Logger = logger,
+  skipCheck = false,
 ): Promise<boolean> {
   const key = `articles:${newsItem.url}`;
-  const res = await kv.get(key);
-  if (res !== null) {
-    log.info("News item already registered", { item: newsItem });
-    return true;
+  if (!skipCheck) {
+    const res = await kv.get(key);
+    if (res !== null) {
+      log.info("News item already registered", { item: newsItem });
+      return true;
+    }
   }
 
   await kv.put(key, "true", { expirationTtl: 24 * 60 * 60 });
@@ -239,10 +313,110 @@ export function filterPhotoLines(text: string): string {
   return filteredLines.join("\n");
 }
 
+/**
+ * HTMLRewriter を使用して記事タイトル、本文、次ページの有無をストリーミング抽出
+ */
+export async function extractArticleContentWithHTMLRewriter(
+  response: Response,
+  pageNumber = 1,
+  articleBaseUrl = "",
+): Promise<{ title: string; body: string; hasNextPage: boolean }> {
+  let title = "";
+  let body = "";
+  let inHeader = false;
+  let inParagraph = false;
+  let currentParagraph = "";
+  let hasNextPage = false;
+  const pageRegex = /\d+\/\d+ページ/;
+
+  // 記事IDを抽出して次ページリンクを自記事のものに限定する
+  const articleIdMatch = articleBaseUrl.match(/articles\/([a-zA-Z0-9]+)/);
+  const articleId = articleIdMatch ? articleIdMatch[1] : "";
+  const nextPageNumber = pageNumber + 1;
+
+  const rewriter = new HTMLRewriter()
+    .on(
+      "article#uamods > header > h1, article#uamods-article > div > header > h1, article header h1",
+      {
+        element(el) {
+          inHeader = true;
+          el.onEndTag(() => {
+            inHeader = false;
+          });
+        },
+        text(text) {
+          if (inHeader) {
+            title += text.text;
+          }
+        },
+      },
+    )
+    .on(
+      "article#uamods > div > div > p, article#uamods-article > div > section > div > p, article#uamods-article > div > section > div > *",
+      {
+        element(el) {
+          inParagraph = true;
+          currentParagraph = "";
+          el.onEndTag(() => {
+            inParagraph = false;
+            const filteredText = filterPhotoLines(currentParagraph);
+            if (!pageRegex.test(filteredText) && filteredText.trim().length > 0) {
+              body += `${filteredText}\n`;
+            }
+          });
+        },
+        text(text) {
+          if (inParagraph) {
+            currentParagraph += text.text;
+          }
+        },
+      },
+    )
+    .on(
+      "article#uamods > div > div > p br, article#uamods-article > div > section > div > p br",
+      {
+        element() {
+          if (inParagraph) {
+            currentParagraph += "\n";
+          }
+        },
+      },
+    )
+    .on("a[href*='page=']", {
+      element(el) {
+        const href = el.getAttribute("href");
+        if (!href) return;
+
+        // 次ページのリンクか判定
+        const hasNextPageParam =
+          href.includes(`?page=${nextPageNumber}`) ||
+          href.includes(`&page=${nextPageNumber}`) ||
+          href.includes(`page=${nextPageNumber}`);
+
+        if (hasNextPageParam) {
+          if (articleId) {
+            if (href.includes(articleId)) {
+              hasNextPage = true;
+            }
+          } else {
+            hasNextPage = true;
+          }
+        }
+      },
+    });
+
+  await rewriter.transform(response).arrayBuffer();
+  return {
+    title: title.trim(),
+    body: normalizeNewlines(body).trim(),
+    hasNextPage,
+  };
+}
+
 export async function getNewsArticle(
   url: string,
-  headerSelector: string,
-  bodySelector: string,
+  _headerSelector?: string,
+  _bodySelector?: string,
   log: Logger = logger,
 ): Promise<string> {
   const newsArticlePage = await fetch(url);
@@ -254,30 +428,17 @@ export async function getNewsArticle(
     return "";
   }
 
-  const newsArticleBody = await newsArticlePage.text();
-  const newsArticleDoc = new DOMParser().parseFromString(
-    newsArticleBody,
-    "text/html",
+  const pageMatch = url.match(/[?&]page=(\d+)/);
+  const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : 1;
+
+  const { title, body } = await extractArticleContentWithHTMLRewriter(
+    newsArticlePage,
+    pageNumber,
+    url,
   );
-  if (!newsArticleDoc) {
-    return "";
-  }
-  for (const br of newsArticleDoc.querySelectorAll("br")) {
-    br.replaceWith(newsArticleDoc.createTextNode("\n"));
-  }
-  const newsHeader = newsArticleDoc.querySelector(headerSelector)?.textContent;
-  const paragraphElements = newsArticleDoc.querySelectorAll(bodySelector);
-  let newsBody = "";
-  const pageRegex = /\d+\/\d+ページ/;
-  for (const paragraph of paragraphElements ?? []) {
-    const filteredText = filterPhotoLines(paragraph.textContent ?? "");
-    if (pageRegex.test(filteredText)) {
-      continue;
-    }
-    newsBody += `${filteredText}\n`;
-  }
-  let content = newsHeader && url.endsWith("1") ? `${newsHeader} \n\n\n` : "";
-  content += normalizeNewlines(newsBody);
+
+  let content = title && url.endsWith("1") ? `${title} \n\n\n` : "";
+  content += normalizeNewlines(body);
   log.info("Retrieved article page", { url, contentLength: content.length });
   return content;
 }
@@ -370,40 +531,59 @@ export function convertItemToDuplicateCheckRequest(
   };
 }
 
+/**
+ * 1記事の取得・検証・通知
+ * - 1ページ目で早期キーワード除外
+ * - 1ページ目で早期重複チェック (echo-breaker)
+ * - 重複でない場合のみ次ページを取得
+ */
 export async function notifyDiscordWithNewsItem(
   newsItem: NewsItem,
   env: Env,
   log: Logger = logger,
-): Promise<void> {
+): Promise<boolean> {
   const webhookUrl = env.WEBHOOK_URL;
   if (!webhookUrl) {
     throw new Error("WEBHOOK_URL is not set");
   }
 
-  const getNewsArticleFn = getNewsArticleNormal;
   if (newsItem.url.includes("expert")) {
     log.info("Ignored expert news item", { item: newsItem });
-    return;
+    return false;
   }
 
-  let newsContent = "";
-  for (const i of [1, 2, 3, 4, 5]) {
-    const content = await getNewsArticleFn(`${newsItem.url}?page=${i}`, log);
-    if (content === "") {
-      break;
-    }
-    newsContent += content;
-  }
-  newsContent += `\n<${newsItem.url}>`;
+  // 1. 1ページ目を取得
+  const page1Url = newsItem.url.includes("?page=")
+    ? newsItem.url
+    : `${newsItem.url}?page=1`;
 
-  if (IGNORE_KEYWORDS.some((keyword) => newsContent.includes(keyword))) {
+  const page1Res = await fetch(page1Url);
+  if (!page1Res.ok) {
+    if (page1Res.body) await page1Res.body.cancel();
+    return false;
+  }
+
+  const {
+    title: page1Title,
+    body: page1Body,
+    hasNextPage,
+  } = await extractArticleContentWithHTMLRewriter(page1Res, 1, newsItem.url);
+
+  let page1Content = page1Title ? `${page1Title} \n\n\n` : "";
+  page1Content += normalizeNewlines(page1Body);
+
+  const page1FullText = `${page1Content}\n<${newsItem.url}>`;
+
+  // 2. 1ページ目で早期キーワードチェック
+  if (IGNORE_KEYWORDS.some((keyword) => page1FullText.includes(keyword))) {
     log.info("Ignored news item due to keywords", { item: newsItem });
-    return;
+    return false;
   }
 
+  // 3. 1ページ目で早期重複記事チェック (echo-breaker)
   const duplicateCheckRequestBody = convertItemToDuplicateCheckRequest(
     newsItem,
-    newsContent,
+    page1FullText,
   );
 
   const fetcher = env.ECHO_BREAKER
@@ -437,16 +617,55 @@ export async function notifyDiscordWithNewsItem(
       item: newsItem,
       debugInfo: checkArticleResponse.debug_info,
     });
-    return;
+    return false;
   }
 
+  // 4. 重複でなく、次ページが存在する場合のみ 2〜5 ページ目を取得
+  let fullNewsContent = page1Content;
+  if (hasNextPage) {
+    let currentHasNext = true;
+    for (let page = 2; page <= 5 && currentHasNext; page++) {
+      const pageRes = await fetch(`${newsItem.url}?page=${page}`);
+      if (!pageRes.ok) {
+        if (pageRes.body) await pageRes.body.cancel();
+        break;
+      }
+      const parsed = await extractArticleContentWithHTMLRewriter(
+        pageRes,
+        page,
+        newsItem.url,
+      );
+      if (!parsed.body) {
+        break;
+      }
+      fullNewsContent += `\n\n${normalizeNewlines(parsed.body)}`;
+      currentHasNext = parsed.hasNextPage;
+    }
+  }
+
+  fullNewsContent = `${normalizeNewlines(fullNewsContent)}\n<${newsItem.url}>`;
+
+  // 2ページ目以降も含めた全文で念のためキーワードチェック
+  if (IGNORE_KEYWORDS.some((keyword) => fullNewsContent.includes(keyword))) {
+    log.info("Ignored news item due to keywords in full content", {
+      item: newsItem,
+    });
+    return false;
+  }
+
+  // 5. Discord へ送信
   const MAX_CONTENT_LENGTH = 2000;
-  const contentChunks = splitContentIntoChunks(newsContent, MAX_CONTENT_LENGTH);
+  const contentChunks = splitContentIntoChunks(
+    fullNewsContent,
+    MAX_CONTENT_LENGTH,
+  );
   const normalizedContentChunks = normalizeNewlinesInChunks(contentChunks);
 
   for (const chunk of normalizedContentChunks) {
     await sendDiscordMessage(webhookUrl, chunk, newsItem, log);
   }
+
+  return true;
 }
 
 export async function notifyDiscord(
@@ -459,17 +678,22 @@ export async function notifyDiscord(
     throw new Error("WEBHOOK_URL is not set");
   }
 
+  // ベクター処理がデータベースに反映されるまでの待機時間（デフォルト90秒）
   const intervalMs = env.NOTIFY_INTERVAL_MS
     ? parseInt(env.NOTIFY_INTERVAL_MS, 10)
     : 90 * 1000;
 
-  for (const newsItem of news) {
-    const isRegistered = await registerNewsItem(newsItem, env.SPORTSNAVI_KV, log);
-    if (!isRegistered) {
-      await notifyDiscordWithNewsItem(newsItem, env, log);
-      if (intervalMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, intervalMs));
-      }
+  for (let i = 0; i < news.length; i++) {
+    const newsItem = news[i];
+    // 未登録判定済みのため、二重 get をスキップして即 put (skipCheck = true)
+    await registerNewsItem(newsItem, env.SPORTSNAVI_KV, log, true);
+    const notified = await notifyDiscordWithNewsItem(newsItem, env, log);
+    // 実際に新規通知が行われ、かつ後続の記事がある場合のみベクターDB反映待ちを行う
+    if (notified && i < news.length - 1 && intervalMs > 0) {
+      log.info("Waiting for vector DB propagation before checking next article", {
+        intervalMs,
+      });
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
   }
 }
@@ -498,7 +722,10 @@ export async function runCron(env: Env): Promise<void> {
       filteredCount: filteredNews.length,
       unregisteredCount: unregisteredNews.length,
     });
-    await notifyDiscord(unregisteredNews, env, log);
+
+    // 1回のCronあたりの通知数を最大件数に絞る（残りは次回Cronで処理）
+    const targetNews = unregisteredNews.slice(0, MAX_NOTIFICATIONS_PER_RUN);
+    await notifyDiscord(targetNews, env, log);
     log.info("Cron job completed successfully");
   } catch (err) {
     log.error("Cron job failed", err);
