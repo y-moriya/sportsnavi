@@ -534,6 +534,29 @@ describe("sportsnavi main", () => {
       vi.useRealTimers();
     }
   });
+
+  it("fetchNewsListPage returns empty array gracefully when API returns 403", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fetchNewsListPage } = await import("./main");
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = vi.fn(async () => {
+        return new Response("Forbidden", { status: 403 });
+      }) as unknown as typeof fetch;
+
+      try {
+        const promise = fetchNewsListPage(new Logger({ appName: "test" }));
+        await vi.runAllTimersAsync();
+        const items = await promise;
+        expect(items).toEqual([]);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
+
 
 

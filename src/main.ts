@@ -326,17 +326,32 @@ export function filterNews(
 export async function fetchNewsListPage(
   log: Logger = logger,
 ): Promise<NewsItem[]> {
-  const newsListPage = await fetchWithRetry(
-    "https://sports.yahoo.co.jp/list/news/npb?genre=npb&team=5",
-    {},
-    2,
-    1500,
-    log,
-  );
-  if (!newsListPage.ok) {
-    throw new Error(`Failed to fetch news list: ${newsListPage.status}`);
+  try {
+    const newsListPage = await fetchWithRetry(
+      "https://sports.yahoo.co.jp/list/news/npb?genre=npb&team=5",
+      {},
+      2,
+      1500,
+      log,
+    );
+    if (!newsListPage.ok) {
+      if (newsListPage.body) {
+        await newsListPage.body.cancel();
+      }
+      log.warn(
+        `Failed to fetch news list (status: ${newsListPage.status}), skipping this run.`,
+        { status: newsListPage.status },
+      );
+      return [];
+    }
+    return await parseNewsListWithHTMLRewriter(newsListPage);
+  } catch (err) {
+    log.warn(
+      "Failed to fetch news list due to network/retry error, skipping this run.",
+      { error: String(err) },
+    );
+    return [];
   }
-  return parseNewsListWithHTMLRewriter(newsListPage);
 }
 
 export async function filterUnregisteredNewsItems(
