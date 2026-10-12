@@ -122,6 +122,67 @@ export const IGNORE_KEYWORDS = [
 
 export const MAX_NOTIFICATIONS_PER_RUN = 5;
 
+export const DEFAULT_FETCH_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+};
+
+/**
+ * User-Agent 付与および一時的エラー（403/429/5xx）時のリトライを行う fetch ラッパー
+ */
+export async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  maxRetries = 2,
+  delayMs = 1500,
+  log: Logger = logger,
+): Promise<Response> {
+  const headers = {
+    ...DEFAULT_FETCH_HEADERS,
+    ...(options.headers || {}),
+  };
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, { ...options, headers });
+      if (response.ok) {
+        return response;
+      }
+      if (
+        attempt < maxRetries &&
+        (response.status === 403 ||
+          response.status === 429 ||
+          response.status >= 500)
+      ) {
+        if (response.body) {
+          await response.body.cancel();
+        }
+        log.warn(
+          `Fetch returned status ${response.status}, retrying in ${delayMs}ms... (attempt ${attempt + 1}/${maxRetries})`,
+          { url, status: response.status },
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      return response;
+    } catch (err) {
+      if (attempt < maxRetries) {
+        log.warn(
+          `Fetch threw error, retrying in ${delayMs}ms... (attempt ${attempt + 1}/${maxRetries})`,
+          { url, error: String(err) },
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error(`Failed to fetch ${url} after ${maxRetries} retries`);
+}
+
 interface RawNewsItem {
   title?: string;
   credit?: string;
@@ -262,9 +323,15 @@ export function filterNews(
   return newsFilteredByTitleAndCredit;
 }
 
-export async function fetchNewsListPage(): Promise<NewsItem[]> {
-  const newsListPage = await fetch(
+export async function fetchNewsListPage(
+  log: Logger = logger,
+): Promise<NewsItem[]> {
+  const newsListPage = await fetchWithRetry(
     "https://sports.yahoo.co.jp/list/news/npb?genre=npb&team=5",
+    {},
+    2,
+    1500,
+    log,
   );
   if (!newsListPage.ok) {
     throw new Error(`Failed to fetch news list: ${newsListPage.status}`);
@@ -419,7 +486,7 @@ export async function getNewsArticle(
   _bodySelector?: string,
   log: Logger = logger,
 ): Promise<string> {
-  const newsArticlePage = await fetch(url);
+  const newsArticlePage = await fetchWithRetry(url, {}, 2, 1000, log);
 
   if (!newsArticlePage.ok) {
     if (newsArticlePage.body) {
@@ -557,7 +624,7 @@ export async function notifyDiscordWithNewsItem(
     ? newsItem.url
     : `${newsItem.url}?page=1`;
 
-  const page1Res = await fetch(page1Url);
+  const page1Res = await fetchWithRetry(page1Url, {}, 2, 1000, log);
   if (!page1Res.ok) {
     if (page1Res.body) await page1Res.body.cancel();
     return false;
@@ -625,7 +692,13 @@ export async function notifyDiscordWithNewsItem(
   if (hasNextPage) {
     let currentHasNext = true;
     for (let page = 2; page <= 5 && currentHasNext; page++) {
-      const pageRes = await fetch(`${newsItem.url}?page=${page}`);
+      const pageRes = await fetchWithRetry(
+        `${newsItem.url}?page=${page}`,
+        {},
+        2,
+        1000,
+        log,
+      );
       if (!pageRes.ok) {
         if (pageRes.body) await pageRes.body.cancel();
         break;
@@ -710,7 +783,7 @@ export async function runCron(env: Env): Promise<void> {
   const log = createLoggerFromEnv(env);
   log.info("Start cron job");
   try {
-    const newsItems = await fetchNewsListPage();
+    const newsItems = await fetchNewsListPage(log);
     const news = parseNewsItems(newsItems);
     const filteredNews = filterNews(news, log);
     const unregisteredNews = await filterUnregisteredNewsItems(

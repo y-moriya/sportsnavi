@@ -498,6 +498,42 @@ describe("sportsnavi main", () => {
       vi.useRealTimers();
     }
   });
+
+  it("fetchWithRetry retries on 403 status and succeeds when next attempt is 200", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fetchWithRetry } = await import("./main");
+      const originalFetch = globalThis.fetch;
+      let callCount = 0;
+      globalThis.fetch = vi.fn(async (_url: any, options: any) => {
+        callCount++;
+        // Verify User-Agent header is set
+        expect(options.headers["User-Agent"]).toContain("Mozilla/5.0");
+        if (callCount === 1) {
+          return new Response("Forbidden", { status: 403 });
+        }
+        return new Response("OK", { status: 200 });
+      }) as unknown as typeof fetch;
+
+      try {
+        const fetchPromise = fetchWithRetry(
+          "https://example.com/test",
+          {},
+          2,
+          100,
+          new Logger({ appName: "test" }),
+        );
+        await vi.runAllTimersAsync();
+        const res = await fetchPromise;
+        expect(res.status).toBe(200);
+        expect(callCount).toBe(2);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 
