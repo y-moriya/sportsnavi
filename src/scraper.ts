@@ -16,7 +16,9 @@ export const YAHOO_SPORTS_NAVI_URL =
  */
 export function filterPhotoLines(text: string): string {
   const lines = text.split("\n");
-  const filteredLines = lines.filter((line) => !/^【[^】]+】/.test(line.trim()));
+  const filteredLines = lines
+    .map((line) => line.replace(/^[ \t]+|[ \t]+$/g, ""))
+    .filter((line) => !/^【[^】]+】/.test(line.trim()));
   return filteredLines.join("\n");
 }
 
@@ -87,30 +89,6 @@ export function parseArticleHtml(
 ): { title: string; body: string; hasNextPage: boolean } {
   const $ = cheerio.load(html);
 
-  // タイトル抽出
-  const title = $(
-    "article#uamods > header > h1, article#uamods-article > div > header > h1, article header h1",
-  )
-    .first()
-    .text()
-    .trim();
-
-  // 本文抽出
-  const paragraphs: string[] = [];
-  const pageRegex = /\d+\/\d+ページ/;
-
-  $(
-    "article#uamods > div > div > p, article#uamods-article > div > section > div > p, article#uamods-article > div > section > div > *",
-  ).each((_, el) => {
-    const rawText = $(el).text();
-    const filteredText = filterPhotoLines(rawText).trim();
-    if (filteredText.length > 0 && !pageRegex.test(filteredText)) {
-      paragraphs.push(filteredText);
-    }
-  });
-
-  const body = paragraphs.join("\n");
-
   // 自記事の次ページリンク判定
   const articleIdMatch = articleBaseUrl.match(/articles\/([a-zA-Z0-9]+)/);
   const articleId = articleIdMatch ? articleIdMatch[1] : "";
@@ -126,6 +104,53 @@ export function parseArticleHtml(
       }
     }
   });
+
+  // タイトル抽出
+  const title = $(
+    "article#uamods > header > h1, article#uamods-article > div > header > h1, article header h1",
+  )
+    .first()
+    .text()
+    .trim();
+
+  // 写真・メディア関連リンクを DOM から除去
+  $("article a, div a").each((_, el) => {
+    const linkText = $(el).text().trim();
+    if (/^【[^】]+】/.test(linkText)) {
+      $(el).remove();
+    }
+  });
+
+  // <br> タグを改行文字に置換（段落内改行および写真リンク前後の改行を復元）
+  $("br").replaceWith("\n");
+
+  // 本文抽出
+  const paragraphs: string[] = [];
+  const pageRegex = /\d+\/\d+ページ/;
+
+  let $paragraphs = $(
+    "article#uamods > div > div > p, article#uamods-article > div > section > div > p",
+  );
+
+  if ($paragraphs.length === 0) {
+    $paragraphs = $(
+      "article#uamods > div > div > *, article#uamods-article > div > section > div > *",
+    );
+  }
+
+  if ($paragraphs.length === 0) {
+    $paragraphs = $("article p");
+  }
+
+  $paragraphs.each((_, el) => {
+    const rawText = $(el).text();
+    const filteredText = filterPhotoLines(rawText).trim();
+    if (filteredText.length > 0 && !pageRegex.test(filteredText)) {
+      paragraphs.push(filteredText);
+    }
+  });
+
+  const body = normalizeNewlines(paragraphs.join("\n"));
 
   return { title, body, hasNextPage };
 }

@@ -134,6 +134,31 @@ describe("sportsnavi local batch", () => {
       expect(result.body).toBe("1ページ目の段落です。\n2つ目の段落です。");
       expect(result.hasNextPage).toBe(true);
     });
+
+    it("parseArticleHtml handles <br> tags within paragraphs and strips photo links", () => {
+      const html = `
+        <article id="uamods">
+          <header><h1>阪神タイガースの速報</h1></header>
+          <div><div>
+            <p>
+              14日に開幕する。<br><br>
+              <a href="https://example.com/photo">【写真】マウンドで練習する投手</a><br><br>
+              阪神は村上投手が先発。<br><br>
+              好投が期待される。
+            </p>
+          </div></div>
+        </article>
+      `;
+
+      const result = parseArticleHtml(
+        html,
+        1,
+        "https://news.yahoo.co.jp/articles/sample2",
+      );
+      expect(result.title).toBe("阪神タイガースの速報");
+      expect(result.body).not.toContain("【写真】");
+      expect(result.body).toContain("14日に開幕する。\n\n阪神は村上投手が先発。\n\n好投が期待される。");
+    });
   });
 
   describe("LocalStorage", () => {

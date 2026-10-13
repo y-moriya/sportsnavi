@@ -2,10 +2,10 @@ import type { NewsItem } from "./types.js";
 import type { Logger } from "./logger.js";
 
 /**
- * 連続する3行以上の空行を2行に正規化
+ * 連続する3行以上の空行を2行に正規化（半角スペースのみの空行も適切に処理）
  */
 export function normalizeNewlines(text: string): string {
-  return text.replace(/\n{3,}/g, "\n\n");
+  return text.replace(/^[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n");
 }
 
 /**
