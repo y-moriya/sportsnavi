@@ -1,20 +1,24 @@
 {
   "name": "sportsnavi",
   "version": "1.0.0",
-  "description": "SportsNavi news fetcher for Hanshin Tigers",
+  "description": "SportsNavi news fetcher for Hanshin Tigers (Cron batch script)",
   "type": "module",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "test": "vitest run"
+    "start": "tsx src/index.ts",
+    "run:prod": "node dist/index.js",
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250214.0",
-    "@miniflare/html-rewriter": "^2.14.4",
     "@types/node": "^26.6.4",
-    "html-rewriter-wasm": "^0.4.1",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.5",
-    "wrangler": "^4.149.0"
+    "vitest": "^3.0.5"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "dotenv": "^18.0.7"
   }
 }
