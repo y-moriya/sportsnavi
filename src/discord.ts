@@ -52,6 +52,7 @@ export async function sendDiscordMessage(
       avatar_url:
         "https://s.yimg.jp/images/sportsnavi/common/apple-touch-icon.png",
     }),
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {

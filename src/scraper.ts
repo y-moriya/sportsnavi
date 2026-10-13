@@ -57,6 +57,7 @@ export async function fetchNewsListPage(
   try {
     const response = await fetch(targetUrl, {
       headers: DEFAULT_FETCH_HEADERS,
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
@@ -116,9 +117,9 @@ export function parseArticleHtml(
   const nextPageNumber = pageNumber + 1;
 
   let hasNextPage = false;
-  $("a").each((_, el) => {
+  $(`a[href*="page=${nextPageNumber}"]`).each((_, el) => {
     const href = $(el).attr("href");
-    if (href && href.includes(`page=${nextPageNumber}`)) {
+    if (href) {
       if (!articleId || href.includes(articleId)) {
         hasNextPage = true;
         return false;
@@ -144,6 +145,7 @@ export async function fetchFullArticleContent(
   try {
     page1Res = await fetch(page1Url, {
       headers: DEFAULT_FETCH_HEADERS,
+      signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
     log?.warn(`Network error fetching article page 1`, {
@@ -177,6 +179,7 @@ export async function fetchFullArticleContent(
     try {
       const pageRes = await fetch(`${articleUrl}?page=${page}`, {
         headers: DEFAULT_FETCH_HEADERS,
+        signal: AbortSignal.timeout(10_000),
       });
       if (!pageRes.ok) break;
 

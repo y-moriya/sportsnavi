@@ -27,6 +27,7 @@ export class GeminiClient {
         },
         outputDimensionality: 768,
       }),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {

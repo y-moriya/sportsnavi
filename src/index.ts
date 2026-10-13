@@ -1,6 +1,6 @@
 import { loadConfig, MAX_NOTIFICATIONS_PER_RUN } from "./config.js";
 import { Logger } from "./logger.js";
-import { LocalStorage } from "./storage.js";
+import { ProcessLock } from "./storage.js";
 import { fetchNewsListPage, filterNews } from "./scraper.js";
 import { processAndNotifyItem } from "./notifier.js";
 import { rotateLogFile } from "./rotator.js";
@@ -15,14 +15,10 @@ export async function runBatch(): Promise<void> {
     token: config.axiomToken,
   });
 
-  const storage = new LocalStorage(
-    config.dataDir,
-    config.historyFilePath,
-    config.lockFilePath,
-  );
+  const lock = new ProcessLock(config.lockFilePath);
 
   // 1. プロセスロックの取得（前回のジョブがまだ実行中なら重複実行をスキップ）
-  if (!storage.acquireLock()) {
+  if (!lock.acquire()) {
     log.info("Previous sportsnavi batch job is still running, skipping.");
     await log.flush();
     return;
@@ -30,7 +26,7 @@ export async function runBatch(): Promise<void> {
 
   log.info("Started sportsnavi batch job");
 
-  let vectorStorage: VectorStorage | undefined;
+  let storage: VectorStorage | undefined;
   const gemini = config.geminiApiKey
     ? new GeminiClient(config.geminiApiKey)
     : undefined;
@@ -50,19 +46,18 @@ export async function runBatch(): Promise<void> {
       log,
     );
 
-    // 3. 古いURL履歴（48時間）および古いベクトル（7日間）をクリーンアップ
-    storage.cleanup();
-
-    try {
-      vectorStorage = new VectorStorage(config.vectorDbPath);
-      const cleanedVectors = vectorStorage.cleanup();
-      if (cleanedVectors > 0) {
-        log.info("Cleaned up expired vector records", { count: cleanedVectors });
-      }
-    } catch (err) {
-      log.warn("Failed to initialize or clean VectorStorage", {
-        error: String(err),
+    // 3. SQLite ストレージ初期化・旧JSON履歴移行・期限切れデータのクリーンアップ
+    storage = new VectorStorage(config.vectorDbPath);
+    const migratedHistory = storage.migrateJsonHistory(config.historyFilePath);
+    if (migratedHistory > 0) {
+      log.info("Migrated legacy JSON history to SQLite", {
+        count: migratedHistory,
       });
+    }
+
+    const cleanedVectors = storage.cleanup();
+    if (cleanedVectors > 0) {
+      log.info("Cleaned up expired vector records", { count: cleanedVectors });
     }
 
     // 4. ニュース一覧を取得
@@ -75,7 +70,7 @@ export async function runBatch(): Promise<void> {
     // 5. タイトル・クレジットによる一次フィルタリング
     const filteredItems = filterNews(rawItems, log);
 
-    // 6. ローカル履歴を参照し、未通知の記事のみ抽出
+    // 6. SQLite 履歴を参照し、未通知の記事のみ抽出
     const unregisteredItems = storage.filterUnregistered(filteredItems);
 
     log.info("News items prepared for notification", {
@@ -96,16 +91,15 @@ export async function runBatch(): Promise<void> {
       const item = targetItems[i];
 
       // 重複チェック前に既読登録して二重通知を防止
-      storage.register(item.url);
+      storage.registerUrl(item.url);
 
       const notified = await processAndNotifyItem(
         item,
         config.webhookUrl,
-        config.echoBreakerUrl,
         log,
         {
           gemini,
-          vectorStorage,
+          vectorStorage: storage,
           similarityThreshold: config.similarityThreshold,
         },
       );
@@ -126,15 +120,15 @@ export async function runBatch(): Promise<void> {
   } catch (err) {
     log.error("sportsnavi batch job encountered an error", err);
   } finally {
-    if (vectorStorage) {
+    if (storage) {
       try {
-        vectorStorage.close();
+        storage.close();
       } catch {
         // ignore
       }
     }
     // ロックを解放
-    storage.releaseLock();
+    lock.release();
     await log.flush();
   }
 }

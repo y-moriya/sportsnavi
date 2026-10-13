@@ -1,42 +1,37 @@
 import fs from "node:fs";
 import path from "node:path";
+import Database from "better-sqlite3";
 
 export interface HistoryRecord {
   url: string;
   timestamp: number;
 }
 
-export class LocalStorage {
-  private historyFilePath: string;
+/**
+ * プロセスロック管理（PID とタイムスタンプによる重複実行防止）
+ */
+export class ProcessLock {
   private lockFilePath: string;
-  private dataDir: string;
 
-  constructor(dataDir: string, historyFilePath: string, lockFilePath: string) {
-    this.dataDir = dataDir;
-    this.historyFilePath = historyFilePath;
+  constructor(lockFilePath: string) {
     this.lockFilePath = lockFilePath;
-    this.ensureDir();
-  }
-
-  private ensureDir(): void {
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
+    const dir = path.dirname(lockFilePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
   }
 
   /**
-   * プロセスロックを取得（重複実行防止）
+   * プロセスロックを取得
    * @param maxLockAgeMs ロックが放置されたとみなす有効期限（デフォルト30分）
    */
-  acquireLock(maxLockAgeMs = 30 * 60 * 1000): boolean {
-    this.ensureDir();
+  acquire(maxLockAgeMs = 30 * 60 * 1000): boolean {
     if (fs.existsSync(this.lockFilePath)) {
       try {
         const content = fs.readFileSync(this.lockFilePath, "utf-8");
-        const { timestamp, pid } = JSON.parse(content);
+        const { timestamp } = JSON.parse(content);
         const age = Date.now() - timestamp;
 
-        // まだ有効期限内で、プロセスが生存している可能性がある場合
         if (age < maxLockAgeMs) {
           return false;
         }
@@ -60,7 +55,7 @@ export class LocalStorage {
   /**
    * プロセスロックを解放
    */
-  releaseLock(): void {
+  release(): void {
     try {
       if (fs.existsSync(this.lockFilePath)) {
         fs.unlinkSync(this.lockFilePath);
@@ -69,73 +64,119 @@ export class LocalStorage {
       // ignore
     }
   }
+}
 
-  /**
-   * 履歴ファイルを読み込み
-   */
-  private readHistory(): Record<string, number> {
-    this.ensureDir();
-    if (!fs.existsSync(this.historyFilePath)) {
-      return {};
+/**
+ * ローカルストレージ（プロセスロックおよび SQLite ベースの履歴管理）
+ */
+export class LocalStorage {
+  private lock: ProcessLock;
+  private db: Database.Database;
+
+  constructor(dataDir: string, historyFilePath: string, lockFilePath: string) {
+    this.lock = new ProcessLock(lockFilePath);
+
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
     }
-    try {
-      const content = fs.readFileSync(this.historyFilePath, "utf-8");
-      return JSON.parse(content);
-    } catch {
-      return {};
+
+    const dbPath = path.join(dataDir, "history.db");
+    this.db = new Database(dbPath);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS url_history (
+        url TEXT PRIMARY KEY,
+        timestamp INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_url_history_timestamp ON url_history(timestamp);
+    `);
+
+    // 既存の history.json があれば自動移行
+    if (fs.existsSync(historyFilePath)) {
+      try {
+        const content = fs.readFileSync(historyFilePath, "utf-8");
+        const data = JSON.parse(content) as Record<string, number>;
+        const insert = this.db.prepare(
+          "INSERT OR IGNORE INTO url_history (url, timestamp) VALUES (?, ?)",
+        );
+        for (const [url, ts] of Object.entries(data)) {
+          insert.run(url, ts);
+        }
+      } catch {
+        // ignore
+      }
     }
   }
 
   /**
-   * 履歴ファイルに書き込み
+   * プロセスロックを取得
    */
-  private writeHistory(data: Record<string, number>): void {
-    this.ensureDir();
-    fs.writeFileSync(this.historyFilePath, JSON.stringify(data, null, 2), "utf-8");
+  acquireLock(maxLockAgeMs = 30 * 60 * 1000): boolean {
+    return this.lock.acquire(maxLockAgeMs);
   }
 
   /**
-   * URLが既に登録済み（通知済み）か判定
+   * プロセスロックを解放
+   */
+  releaseLock(): void {
+    this.lock.release();
+  }
+
+  /**
+   * URLが既に登録済みか判定
    */
   isRegistered(url: string): boolean {
-    const history = this.readHistory();
-    return Boolean(history[url]);
+    const row = this.db
+      .prepare("SELECT 1 FROM url_history WHERE url = ?")
+      .get(url);
+    return Boolean(row);
   }
 
   /**
    * URLを既読登録
    */
   register(url: string, timestamp = Date.now()): void {
-    const history = this.readHistory();
-    history[url] = timestamp;
-    this.writeHistory(history);
+    this.db
+      .prepare(
+        "INSERT OR REPLACE INTO url_history (url, timestamp) VALUES (?, ?)",
+      )
+      .run(url, timestamp);
   }
 
   /**
    * 複数URLから未登録のものだけを抽出
    */
   filterUnregistered<T extends { url: string }>(items: T[]): T[] {
-    const history = this.readHistory();
-    return items.filter((item) => !history[item.url]);
+    if (items.length === 0) {
+      return [];
+    }
+
+    const placeholders = items.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(`SELECT url FROM url_history WHERE url IN (${placeholders})`)
+      .all(...items.map((i) => i.url)) as Array<{ url: string }>;
+
+    const seen = new Set(rows.map((r) => r.url));
+    return items.filter((item) => !seen.has(item.url));
   }
 
   /**
-   * 48時間以上前の古い履歴を削除してファイル肥大化を防止
+   * 期限切れの古い履歴を削除
    */
   cleanup(retentionMs = 48 * 60 * 60 * 1000): void {
-    const history = this.readHistory();
-    const now = Date.now();
-    let modified = false;
+    const threshold = Date.now() - retentionMs;
+    this.db
+      .prepare("DELETE FROM url_history WHERE timestamp < ?")
+      .run(threshold);
+  }
 
-    for (const [url, timestamp] of Object.entries(history)) {
-      if (now - timestamp > retentionMs) {
-        delete history[url];
-        modified = true;
-      }
-    }
-
-    if (modified) {
-      this.writeHistory(history);
+  /**
+   * データベース接続を閉じる
+   */
+  close(): void {
+    try {
+      this.db.close();
+    } catch {
+      // ignore
     }
   }
 }

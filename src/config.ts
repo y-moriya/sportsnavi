@@ -5,7 +5,6 @@ dotenv.config();
 
 export interface Config {
   webhookUrl: string;
-  echoBreakerUrl?: string;
   geminiApiKey?: string;
   vectorDbPath: string;
   similarityThreshold: number;
@@ -131,7 +130,6 @@ export function loadConfig(): Config {
   const dataDir = process.env.DATA_DIR || path.resolve(process.cwd(), "data");
   return {
     webhookUrl: process.env.WEBHOOK_URL || "",
-    echoBreakerUrl: process.env.ECHO_BREAKER_URL,
     geminiApiKey: process.env.GEMINI_API_KEY,
     vectorDbPath:
       process.env.VECTOR_DB_PATH || path.join(dataDir, "vectors.db"),

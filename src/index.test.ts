@@ -208,52 +208,14 @@ describe("sportsnavi local batch", () => {
       const resultKw = await processAndNotifyItem(
         item,
         "https://discord.com/api/webhooks/test",
-        "https://echo-breaker.example.com",
         testLogger,
       );
       expect(resultKw).toBe(false);
 
-      // 2. 重複（echo-breaker判定）のテスト
-      globalThis.fetch = vi.fn(async (url: any) => {
-        const urlStr = String(url);
-        if (urlStr.includes("echo-breaker")) {
-          return new Response(
-            JSON.stringify({
-              is_duplicate: true,
-              similarity_score: 0.95,
-              message: "duplicate",
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } },
-          );
-        }
-        return new Response(
-          "<article id='uamods'><header><h1>阪神佐藤輝明が活躍</h1></header><div><div><p>正常な記事本文です。</p></div></div></article>",
-          { status: 200 },
-        );
-      }) as unknown as typeof fetch;
-
-      const resultDup = await processAndNotifyItem(
-        item,
-        "https://discord.com/api/webhooks/test",
-        "https://echo-breaker.example.com",
-        testLogger,
-      );
-      expect(resultDup).toBe(false);
-
-      // 3. 正常通知のテスト
+      // 2. 正常通知のテスト
       let discordSent = false;
       globalThis.fetch = vi.fn(async (url: any) => {
         const urlStr = String(url);
-        if (urlStr.includes("echo-breaker")) {
-          return new Response(
-            JSON.stringify({
-              is_duplicate: false,
-              similarity_score: 0.1,
-              message: "ok",
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } },
-          );
-        }
         if (urlStr.includes("discord.com")) {
           discordSent = true;
           return new Response("ok", { status: 200 });
@@ -267,7 +229,6 @@ describe("sportsnavi local batch", () => {
       const resultOk = await processAndNotifyItem(
         item,
         "https://discord.com/api/webhooks/test",
-        "https://echo-breaker.example.com",
         testLogger,
       );
       expect(resultOk).toBe(true);
@@ -344,7 +305,6 @@ describe("sportsnavi local batch", () => {
         const notified1 = await processAndNotifyItem(
           item1,
           "https://discord.com/webhook",
-          undefined,
           testLogger,
           { gemini, vectorStorage: vectorDb, similarityThreshold: 0.9 },
         );
@@ -360,7 +320,6 @@ describe("sportsnavi local batch", () => {
         const notified2 = await processAndNotifyItem(
           item2,
           "https://discord.com/webhook",
-          undefined,
           testLogger,
           { gemini, vectorStorage: vectorDb, similarityThreshold: 0.9 },
         );

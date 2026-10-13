@@ -1,22 +1,13 @@
-import type {
-  NewsItem,
-  CheckArticleRequest,
-  CheckArticleResponse,
-} from "./types.js";
+import type { NewsItem } from "./types.js";
 import { fetchFullArticleContent } from "./scraper.js";
 import { containsIgnoredKeywords, evaluateNewsMetadata } from "./filters.js";
 import { splitContentIntoChunks, sendDiscordMessage } from "./discord.js";
-import {
-  checkEchoBreakerDuplicate,
-  checkLocalDuplicate,
-} from "./deduplicator.js";
+import { checkLocalDuplicate } from "./deduplicator.js";
 import type { Logger } from "./logger.js";
 import type { GeminiClient } from "./gemini.js";
 import type { VectorStorage } from "./vector-storage.js";
 
 export {
-  CheckArticleRequest,
-  CheckArticleResponse,
   splitContentIntoChunks,
   sendDiscordMessage,
 };
@@ -28,31 +19,18 @@ export interface ProcessItemContext {
 }
 
 /**
- * echo-breaker による類似記事（重複）チェック（後方互換用ラッパー）
- */
-export async function checkArticleDuplicate(
-  echoBreakerUrl: string,
-  newsItem: NewsItem,
-  content: string,
-  log?: Logger,
-): Promise<boolean> {
-  return checkEchoBreakerDuplicate(echoBreakerUrl, newsItem, content, log);
-}
-
-/**
  * 1記事の取得・検証・通知パイプライン
  * 1. メタデータ検証（expert除外等）
  * 2. 本文取得
  * 3. キーワード除外判定
- * 4. ベクトル重複判定（ローカルSQLiteまたはecho-breaker）
+ * 4. ベクトル重複判定（ローカルSQLite）
  * 5. Discord メッセージ送信
  *
- * @returns 通知が行われた場合 true、スキップされた場合 false
+ * @returns 通知が行われた場合 true、スキップまたは失敗した場合 false
  */
 export async function processAndNotifyItem(
   newsItem: NewsItem,
   webhookUrl: string,
-  echoBreakerUrl?: string,
   log?: Logger,
   context?: ProcessItemContext,
 ): Promise<boolean> {
@@ -80,7 +58,7 @@ export async function processAndNotifyItem(
     return false;
   }
 
-  // 4. 重複チェック（ローカルSQLite優先、フォールバックでecho-breaker）
+  // 4. 重複チェック（ローカル SQLite + Gemini）
   let isDuplicate = false;
   if (context?.gemini && context?.vectorStorage) {
     const result = await checkLocalDuplicate({
@@ -92,13 +70,6 @@ export async function processAndNotifyItem(
       log,
     });
     isDuplicate = result.isDuplicate;
-  } else if (echoBreakerUrl) {
-    isDuplicate = await checkEchoBreakerDuplicate(
-      echoBreakerUrl,
-      newsItem,
-      article.page1Text,
-      log,
-    );
   }
 
   if (isDuplicate) {
@@ -106,11 +77,18 @@ export async function processAndNotifyItem(
     return false;
   }
 
-  // 5. Discord 送信
-  const chunks = splitContentIntoChunks(article.fullContent);
-  for (const chunk of chunks) {
-    await sendDiscordMessage(webhookUrl, chunk, newsItem, log);
+  // 5. Discord 送信（個別エラーハンドリングにより他記事の通知継続を保護）
+  try {
+    const chunks = splitContentIntoChunks(article.fullContent);
+    for (const chunk of chunks) {
+      await sendDiscordMessage(webhookUrl, chunk, newsItem, log);
+    }
+    return true;
+  } catch (err) {
+    log?.error("Failed to deliver Discord notification for article", err, {
+      title: newsItem.title,
+      url: newsItem.url,
+    });
+    return false;
   }
-
-  return true;
 }

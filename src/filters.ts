@@ -7,6 +7,16 @@ import {
 import type { NewsItem } from "./types.js";
 import type { Logger } from "./logger.js";
 
+const IGNORE_CREDITS_SET = new Set(IGNORE_CREDITS);
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const IGNORE_KEYWORDS_REGEX = new RegExp(
+  IGNORE_KEYWORDS.map(escapeRegExp).join("|"),
+);
+
 export interface FilterResult {
   allowed: boolean;
   reason?: string;
@@ -30,7 +40,7 @@ export function evaluateNewsMetadata(item: NewsItem): FilterResult {
     return { allowed: false, reason: "ignored_title" };
   }
 
-  if (IGNORE_CREDITS.includes(item.credit)) {
+  if (IGNORE_CREDITS_SET.has(item.credit)) {
     return { allowed: false, reason: "ignored_credit" };
   }
 
@@ -64,5 +74,5 @@ export function filterNewsList(items: NewsItem[], log?: Logger): NewsItem[] {
  * 本文またはタイトルに除外キーワードが含まれているかを判定
  */
 export function containsIgnoredKeywords(text: string): boolean {
-  return IGNORE_KEYWORDS.some((kw) => text.includes(kw));
+  return IGNORE_KEYWORDS_REGEX.test(text);
 }
