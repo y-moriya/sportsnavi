@@ -124,10 +124,19 @@ export const MAX_NOTIFICATIONS_PER_RUN = 5;
 
 export const DEFAULT_FETCH_HEADERS: Record<string, string> = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
   Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
   "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+  "Sec-CH-UA":
+    '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+  "Sec-CH-UA-Mobile": "?0",
+  "Sec-CH-UA-Platform": '"Windows"',
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+  "Upgrade-Insecure-Requests": "1",
 };
 
 /**
@@ -337,9 +346,14 @@ export async function fetchNewsListPage(
         await newsListPage.body.cancel();
       }
       if (newsListPage.status === 403) {
+        const bodySnippet = (await newsListPage.text().catch(() => "")).slice(
+          0,
+          300,
+        );
+        const cfRay = newsListPage.headers.get("cf-ray") || undefined;
         log.info(
           "News list fetch returned 403 (likely geo-restriction or redundant instance), skipping this instance.",
-          { status: 403 },
+          { status: 403, cfRay, bodySnippet },
         );
         return [];
       }
@@ -799,13 +813,27 @@ export function createLoggerFromEnv(env: Env): Logger {
   });
 }
 
+export async function getCloudflareTrace(): Promise<{
+  colo: string;
+  loc: string;
+}> {
+  try {
+    const res = await fetch("https://cloudflare.com/cdn-cgi/trace");
+    if (!res.ok) return { colo: "UNKNOWN", loc: "UNKNOWN" };
+    const text = await res.text();
+    const colo = text.match(/colo=([A-Z]+)/)?.[1] ?? "UNKNOWN";
+    const loc = text.match(/loc=([A-Z]+)/)?.[1] ?? "UNKNOWN";
+    return { colo, loc };
+  } catch {
+    return { colo: "UNKNOWN", loc: "UNKNOWN" };
+  }
+}
+
 export async function runCron(
   env: Env,
   scheduledTime?: number,
 ): Promise<void> {
   const log = createLoggerFromEnv(env);
-  log.info("Start cron job", { scheduledTime });
-
   const bucket = scheduledTime
     ? Math.floor(scheduledTime / (15 * 60 * 1000))
     : Math.floor(Date.now() / (15 * 60 * 1000));
@@ -820,6 +848,14 @@ export async function runCron(
       );
       return;
     }
+
+    const trace = await getCloudflareTrace();
+    log.info("Start cron job", {
+      scheduledTime,
+      bucket,
+      colo: trace.colo,
+      loc: trace.loc,
+    });
 
     const newsItems = await fetchNewsListPage(log);
     if (newsItems.length === 0) {
