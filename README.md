@@ -7,7 +7,7 @@
 ## 🌟 特徴
 
 - **国内IPでの安定巡回**: 常時稼働マシン（Raspberry Pi、自宅サーバー、国内VPS等）の cron から直接実行することで、Yahoo! の地域制限（海外IPの403ブロック）を回避。
-- **高精度な重複判定**: タイトル・キーワードの除外に加え、`echo-breaker`（ベクターDB類似度判定API）による類似記事の自動スキップ。
+- **インプロセス高精度重複判定**: タイトル・キーワードの除外に加え、Gemini Embedding とローカル SQLite（`data/vectors.db`）による高速類似記事スキップ。外部クラウドDBの利用枠や障害影響を受けずに自己完結。
 - **安全な多重起動防止**: ファイルロック（`data/process.lock`）により、前回のジョブ実行中（ベクター反映待ちなど）の重複実行を自動回避。
 - **ローカル既読管理**: `data/history.json` に既読URLを自動記録（48時間以上前の古い履歴は自動クリーンアップ）。
 - **自動ログローテーション**: 実行時に `cron.log` のサイズを監視し、5MB超過時に `copytruncate` 方式で自動ローテーション（デフォルト最大3世代保持）。長期運用時のファイル肥大化を自動防止。
@@ -59,8 +59,11 @@ nano .env  # または vim .env
 # Discord Webhook URL (必須)
 WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/yyyy"
 
-# 類似記事判定 API (任意, デフォルトで echo-breaker が指定されています)
-ECHO_BREAKER_URL="https://echo-breaker.euros21st.workers.dev/api/check-article"
+# Gemini API Key (推奨: ローカルSQLiteによるインプロセス重複判定に使用)
+GEMINI_API_KEY="AIzaSy..."
+
+# 類似記事判定 API (任意: GEMINI_API_KEY 未設定時のフォールバック用)
+# ECHO_BREAKER_URL="https://echo-breaker.euros21st.workers.dev/api/check-article"
 
 # Discord 送信間隔 (ミリ秒, レートリミット保護, デフォルト: 1000 = 1秒)
 NOTIFY_INTERVAL_MS=1000
@@ -94,7 +97,7 @@ node dist/index.js
 
 ## ⏰ Cron 定期実行の設定
 
-5分おきに自動巡回するよう、マシンの `crontab` に登録します。
+2分おきに自動巡回するよう、マシンの `crontab` に登録します。
 
 ### 1. Node.js のフルパスを確認
 
@@ -114,13 +117,13 @@ crontab -e
 以下の設定行を末尾に追加します（パスはご自身の環境に合わせて置き換えてください）。
 
 ```cron
-# 5分おき（毎時 0, 5, 10, ... 55分）に実行
-*/5 * * * * cd /path/to/sportsnavi && /path/to/node dist/index.js >> /path/to/sportsnavi/cron.log 2>&1
+# 2分おきに実行
+*/2 * * * * cd /path/to/sportsnavi && /path/to/node dist/index.js >> /path/to/sportsnavi/cron.log 2>&1
 ```
 
 #### 設定例（Raspberry Pi / Linux標準ユーザー `pi` の場合）:
 ```cron
-*/5 * * * * cd /home/pi/sportsnavi && /usr/bin/node dist/index.js >> /home/pi/sportsnavi/cron.log 2>&1
+*/2 * * * * cd /home/pi/sportsnavi && /usr/bin/node dist/index.js >> /home/pi/sportsnavi/cron.log 2>&1
 ```
 
 > **Tip**: 前回のジョブが実行中の場合でも、ファイルロックによって次回の二重起動は自動的に安全にスキップされます。

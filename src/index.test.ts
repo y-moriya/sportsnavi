@@ -308,5 +308,70 @@ describe("sportsnavi local batch", () => {
       }
     });
   });
+
+  describe("local SQLite deduplication flow", () => {
+    it("deduplicates in-process via local SQLite without echo-breaker", async () => {
+      const { VectorStorage } = await import("./vector-storage.js");
+      const { GeminiClient } = await import("./gemini.js");
+      const vectorDb = new VectorStorage(path.join(tmpDir, "test-vectors.db"));
+      const gemini = new GeminiClient("dummy-key");
+
+      // モック埋め込みベクトル
+      vi.spyOn(gemini, "generateEmbedding").mockResolvedValue([1, 0, 0]);
+
+      const originalFetch = globalThis.fetch;
+      let discordCalls = 0;
+      globalThis.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes("discord.com")) {
+          discordCalls++;
+          return new Response("ok", { status: 200 });
+        }
+        return new Response(
+          "<article id='uamods'><header><h1>阪神佐藤輝明が活躍</h1></header><div><div><p>本文です。</p></div></div></article>",
+          { status: 200 },
+        );
+      }) as unknown as typeof fetch;
+
+      const testLogger = new Logger({ appName: "test" });
+
+      try {
+        const item1: NewsItem = {
+          title: "阪神佐藤がホームラン",
+          credit: "デイリースポーツ",
+          url: "https://example.com/art1",
+        };
+        const notified1 = await processAndNotifyItem(
+          item1,
+          "https://discord.com/webhook",
+          undefined,
+          testLogger,
+          { gemini, vectorStorage: vectorDb, similarityThreshold: 0.9 },
+        );
+        expect(notified1).toBe(true);
+        expect(discordCalls).toBe(1);
+
+        // 2回目（同一ベクトル）：ローカル SQLite により即座に重複判定
+        const item2: NewsItem = {
+          title: "阪神佐藤が特大弾（別メディア）",
+          credit: "スポニチアネックス",
+          url: "https://example.com/art2",
+        };
+        const notified2 = await processAndNotifyItem(
+          item2,
+          "https://discord.com/webhook",
+          undefined,
+          testLogger,
+          { gemini, vectorStorage: vectorDb, similarityThreshold: 0.9 },
+        );
+        expect(notified2).toBe(false);
+        // Discord 送信回数は増えていない
+        expect(discordCalls).toBe(1);
+      } finally {
+        vectorDb.close();
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
 });
 

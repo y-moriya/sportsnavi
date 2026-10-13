@@ -5,7 +5,10 @@ dotenv.config();
 
 export interface Config {
   webhookUrl: string;
-  echoBreakerUrl: string;
+  echoBreakerUrl?: string;
+  geminiApiKey?: string;
+  vectorDbPath: string;
+  similarityThreshold: number;
   notifyIntervalMs: number;
   dataDir: string;
   historyFilePath: string;
@@ -19,6 +22,8 @@ export interface Config {
 
 export const DEFAULT_MAX_LOG_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 export const DEFAULT_MAX_LOG_FILES = 3;
+export const DEFAULT_SIMILARITY_THRESHOLD = 0.9;
+
 
 
 export const INCLUDE_TITLES = ["阪神"];
@@ -126,9 +131,13 @@ export function loadConfig(): Config {
   const dataDir = process.env.DATA_DIR || path.resolve(process.cwd(), "data");
   return {
     webhookUrl: process.env.WEBHOOK_URL || "",
-    echoBreakerUrl:
-      process.env.ECHO_BREAKER_URL ||
-      "https://echo-breaker.euros21st.workers.dev/api/check-article",
+    echoBreakerUrl: process.env.ECHO_BREAKER_URL,
+    geminiApiKey: process.env.GEMINI_API_KEY,
+    vectorDbPath:
+      process.env.VECTOR_DB_PATH || path.join(dataDir, "vectors.db"),
+    similarityThreshold: process.env.SIMILARITY_THRESHOLD
+      ? parseFloat(process.env.SIMILARITY_THRESHOLD)
+      : DEFAULT_SIMILARITY_THRESHOLD,
     notifyIntervalMs: process.env.NOTIFY_INTERVAL_MS
       ? parseInt(process.env.NOTIFY_INTERVAL_MS, 10)
       : 1000,

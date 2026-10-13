@@ -1,9 +1,11 @@
 import { loadConfig, MAX_NOTIFICATIONS_PER_RUN } from "./config.js";
 import { Logger } from "./logger.js";
 import { LocalStorage } from "./storage.js";
-import { fetchNewsListPage, filterNews, parseNewsListHtml } from "./scraper.js";
+import { fetchNewsListPage, filterNews } from "./scraper.js";
 import { processAndNotifyItem } from "./notifier.js";
 import { rotateLogFile } from "./rotator.js";
+import { GeminiClient } from "./gemini.js";
+import { VectorStorage } from "./vector-storage.js";
 
 export async function runBatch(): Promise<void> {
   const config = loadConfig();
@@ -28,6 +30,11 @@ export async function runBatch(): Promise<void> {
 
   log.info("Started sportsnavi batch job");
 
+  let vectorStorage: VectorStorage | undefined;
+  const gemini = config.geminiApiKey
+    ? new GeminiClient(config.geminiApiKey)
+    : undefined;
+
   try {
     if (!config.webhookUrl) {
       throw new Error("WEBHOOK_URL is not configured in environment or .env");
@@ -43,20 +50,32 @@ export async function runBatch(): Promise<void> {
       log,
     );
 
-    // 3. 48時間以上前の古いURL履歴をクリーンアップ
+    // 3. 古いURL履歴（48時間）および古いベクトル（7日間）をクリーンアップ
     storage.cleanup();
 
-    // 3. ニュース一覧を取得
+    try {
+      vectorStorage = new VectorStorage(config.vectorDbPath);
+      const cleanedVectors = vectorStorage.cleanup();
+      if (cleanedVectors > 0) {
+        log.info("Cleaned up expired vector records", { count: cleanedVectors });
+      }
+    } catch (err) {
+      log.warn("Failed to initialize or clean VectorStorage", {
+        error: String(err),
+      });
+    }
+
+    // 4. ニュース一覧を取得
     const rawItems = await fetchNewsListPage(undefined, log);
     if (rawItems.length === 0) {
       log.info("No news items found or fetch failed.");
       return;
     }
 
-    // 4. タイトル・クレジットによる一次フィルタリング
+    // 5. タイトル・クレジットによる一次フィルタリング
     const filteredItems = filterNews(rawItems, log);
 
-    // 5. ローカル履歴を参照し、未通知の記事のみ抽出
+    // 6. ローカル履歴を参照し、未通知の記事のみ抽出
     const unregisteredItems = storage.filterUnregistered(filteredItems);
 
     log.info("News items prepared for notification", {
@@ -84,6 +103,11 @@ export async function runBatch(): Promise<void> {
         config.webhookUrl,
         config.echoBreakerUrl,
         log,
+        {
+          gemini,
+          vectorStorage,
+          similarityThreshold: config.similarityThreshold,
+        },
       );
 
       // 新規通知に成功し、かつ次の記事がある場合のみレートリミット保護のため待機
@@ -102,6 +126,13 @@ export async function runBatch(): Promise<void> {
   } catch (err) {
     log.error("sportsnavi batch job encountered an error", err);
   } finally {
+    if (vectorStorage) {
+      try {
+        vectorStorage.close();
+      } catch {
+        // ignore
+      }
+    }
     // ロックを解放
     storage.releaseLock();
     await log.flush();

@@ -1,9 +1,18 @@
-import type { NewsItem, CheckArticleRequest, CheckArticleResponse } from "./types.js";
+import type {
+  NewsItem,
+  CheckArticleRequest,
+  CheckArticleResponse,
+} from "./types.js";
 import { fetchFullArticleContent } from "./scraper.js";
 import { containsIgnoredKeywords, evaluateNewsMetadata } from "./filters.js";
 import { splitContentIntoChunks, sendDiscordMessage } from "./discord.js";
-import { checkEchoBreakerDuplicate } from "./deduplicator.js";
+import {
+  checkEchoBreakerDuplicate,
+  checkLocalDuplicate,
+} from "./deduplicator.js";
 import type { Logger } from "./logger.js";
+import type { GeminiClient } from "./gemini.js";
+import type { VectorStorage } from "./vector-storage.js";
 
 export {
   CheckArticleRequest,
@@ -11,6 +20,12 @@ export {
   splitContentIntoChunks,
   sendDiscordMessage,
 };
+
+export interface ProcessItemContext {
+  gemini?: GeminiClient;
+  vectorStorage?: VectorStorage;
+  similarityThreshold?: number;
+}
 
 /**
  * echo-breaker による類似記事（重複）チェック（後方互換用ラッパー）
@@ -29,7 +44,7 @@ export async function checkArticleDuplicate(
  * 1. メタデータ検証（expert除外等）
  * 2. 本文取得
  * 3. キーワード除外判定
- * 4. ベクトル重複判定（echo-breaker）
+ * 4. ベクトル重複判定（ローカルSQLiteまたはecho-breaker）
  * 5. Discord メッセージ送信
  *
  * @returns 通知が行われた場合 true、スキップされた場合 false
@@ -37,8 +52,9 @@ export async function checkArticleDuplicate(
 export async function processAndNotifyItem(
   newsItem: NewsItem,
   webhookUrl: string,
-  echoBreakerUrl: string,
+  echoBreakerUrl?: string,
   log?: Logger,
+  context?: ProcessItemContext,
 ): Promise<boolean> {
   // 1. メタデータ検証
   const metaCheck = evaluateNewsMetadata(newsItem);
@@ -64,13 +80,26 @@ export async function processAndNotifyItem(
     return false;
   }
 
-  // 4. 重複チェック（echo-breaker）
-  const isDuplicate = await checkEchoBreakerDuplicate(
-    echoBreakerUrl,
-    newsItem,
-    article.page1Text,
-    log,
-  );
+  // 4. 重複チェック（ローカルSQLite優先、フォールバックでecho-breaker）
+  let isDuplicate = false;
+  if (context?.gemini && context?.vectorStorage) {
+    const result = await checkLocalDuplicate({
+      gemini: context.gemini,
+      storage: context.vectorStorage,
+      newsItem,
+      content: article.page1Text,
+      threshold: context.similarityThreshold ?? 0.9,
+      log,
+    });
+    isDuplicate = result.isDuplicate;
+  } else if (echoBreakerUrl) {
+    isDuplicate = await checkEchoBreakerDuplicate(
+      echoBreakerUrl,
+      newsItem,
+      article.page1Text,
+      log,
+    );
+  }
 
   if (isDuplicate) {
     log?.info("Skipped duplicate news item", { title: newsItem.title });
