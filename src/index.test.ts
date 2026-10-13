@@ -276,4 +276,37 @@ describe("sportsnavi local batch", () => {
       globalThis.fetch = originalFetch;
     });
   });
+
+  describe("batch execution with log rotation", () => {
+    it("rotates cron.log during runBatch execution when oversized", async () => {
+      const { runBatch } = await import("./index.js");
+      const cronLogFile = path.join(tmpDir, "cron.log");
+      fs.writeFileSync(cronLogFile, "A".repeat(500), "utf-8");
+
+      const originalEnv = { ...process.env };
+      process.env.DATA_DIR = tmpDir;
+      process.env.WEBHOOK_URL = "https://discord.com/api/webhooks/dummy";
+      process.env.CRON_LOG_PATH = cronLogFile;
+      process.env.MAX_LOG_SIZE_BYTES = "200";
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = vi.fn(async () => {
+        return new Response("<html></html>", { status: 200 });
+      }) as unknown as typeof fetch;
+
+      try {
+        await runBatch();
+
+        // ログローテーションが行われたことを確認
+        expect(fs.existsSync(`${cronLogFile}.1`)).toBe(true);
+        expect(fs.readFileSync(`${cronLogFile}.1`, "utf-8")).toBe("A".repeat(500));
+        expect(fs.existsSync(cronLogFile)).toBe(true);
+        expect(fs.statSync(cronLogFile).size).toBe(0);
+      } finally {
+        process.env = originalEnv;
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
 });
+

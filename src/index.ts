@@ -3,6 +3,7 @@ import { Logger } from "./logger.js";
 import { LocalStorage } from "./storage.js";
 import { fetchNewsListPage, filterNews, parseNewsListHtml } from "./scraper.js";
 import { processAndNotifyItem } from "./notifier.js";
+import { rotateLogFile } from "./rotator.js";
 
 export async function runBatch(): Promise<void> {
   const config = loadConfig();
@@ -32,7 +33,17 @@ export async function runBatch(): Promise<void> {
       throw new Error("WEBHOOK_URL is not configured in environment or .env");
     }
 
-    // 2. 48時間以上前の古いURL履歴をクリーンアップ
+    // 2. ログファイルのローテーションチェック（上限サイズ超過時に自動世代交代）
+    rotateLogFile(
+      {
+        logFilePath: config.cronLogPath,
+        maxSizeBytes: config.maxLogSizeBytes,
+        maxFiles: config.maxLogFiles,
+      },
+      log,
+    );
+
+    // 3. 48時間以上前の古いURL履歴をクリーンアップ
     storage.cleanup();
 
     // 3. ニュース一覧を取得
@@ -75,10 +86,10 @@ export async function runBatch(): Promise<void> {
         log,
       );
 
-      // 新規通知に成功し、かつ次の記事がある場合のみベクターDB反映待ち（デフォルト90秒）
+      // 新規通知に成功し、かつ次の記事がある場合のみレートリミット保護のため待機
       if (notified && i < targetItems.length - 1 && config.notifyIntervalMs > 0) {
         log.info(
-          "Waiting for vector DB propagation before checking next article",
+          "Waiting for Discord rate limit protection before checking next article",
           { intervalMs: config.notifyIntervalMs },
         );
         await new Promise((resolve) =>

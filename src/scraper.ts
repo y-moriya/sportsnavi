@@ -1,67 +1,30 @@
 import * as cheerio from "cheerio";
-import {
-  DEFAULT_FETCH_HEADERS,
-  INCLUDE_TITLES,
-  IGNORE_TITLES,
-  IGNORE_CREDITS,
-  IGNORE_KEYWORDS,
-} from "./config.js";
-import { Logger } from "./logger.js";
+import { DEFAULT_FETCH_HEADERS } from "./config.js";
+import type { NewsItem, ArticleDetail } from "./types.js";
+import type { Logger } from "./logger.js";
+import { filterNewsList, evaluateNewsMetadata } from "./filters.js";
+import { normalizeNewlines } from "./discord.js";
 
-export interface NewsItem {
-  title: string;
-  credit: string;
-  url: string;
-}
+export { NewsItem, ArticleDetail };
+export { normalizeNewlines };
 
 export const YAHOO_SPORTS_NAVI_URL =
   "https://sports.yahoo.co.jp/list/news/npb?genre=npb&team=5";
 
-export function normalizeNewlines(text: string): string {
-  return text.replace(/\n{3,}/g, "\n\n");
-}
-
+/**
+ * 【写真】などの写真・動画キャプション行を除去
+ */
 export function filterPhotoLines(text: string): string {
   const lines = text.split("\n");
   const filteredLines = lines.filter((line) => !/^【[^】]+】/.test(line.trim()));
   return filteredLines.join("\n");
 }
 
-export function filterNewsByTitle(
-  news: NewsItem[],
-  log?: Logger,
-): NewsItem[] {
-  const ignoredTitles: string[] = [];
-  const filteredNews = news.filter((newsItem) => {
-    const isIncluded = INCLUDE_TITLES.some((title) =>
-      newsItem.title.includes(title),
-    );
-    const isIgnored = IGNORE_TITLES.some((title) =>
-      newsItem.title.includes(title),
-    );
-    if (isIncluded && !isIgnored) {
-      return true;
-    }
-    if (isIgnored) {
-      ignoredTitles.push(newsItem.title);
-    }
-    return false;
-  });
-
-  if (ignoredTitles.length > 0 && log) {
-    log.info("Filtered out news items by title", { ignoredTitles });
-  }
-
-  return filteredNews;
-}
-
-export function filterNewsByCredit(news: NewsItem[]): NewsItem[] {
-  return news.filter((newsItem) => !IGNORE_CREDITS.includes(newsItem.credit));
-}
-
+/**
+ * ニュース一覧のフィルタリング（後方互換用エイリアス）
+ */
 export function filterNews(newsItems: NewsItem[], log?: Logger): NewsItem[] {
-  const newsFilteredByTitle = filterNewsByTitle(newsItems, log);
-  return filterNewsByCredit(newsFilteredByTitle);
+  return filterNewsList(newsItems, log);
 }
 
 /**
@@ -124,7 +87,7 @@ export function parseArticleHtml(
   const $ = cheerio.load(html);
 
   // タイトル抽出
-  let title = $(
+  const title = $(
     "article#uamods > header > h1, article#uamods-article > div > header > h1, article header h1",
   )
     .first()
@@ -158,7 +121,7 @@ export function parseArticleHtml(
     if (href && href.includes(`page=${nextPageNumber}`)) {
       if (!articleId || href.includes(articleId)) {
         hasNextPage = true;
-        return false; // break each loop
+        return false;
       }
     }
   });
@@ -167,19 +130,28 @@ export function parseArticleHtml(
 }
 
 /**
- * 記事URLから本文を取得（1〜5ページ巡回）
+ * 記事URLから本文を取得（1〜5ページ巡回して結合）
  */
 export async function fetchFullArticleContent(
   articleUrl: string,
   log?: Logger,
-): Promise<{ title: string; fullContent: string; page1Text: string } | null> {
+): Promise<ArticleDetail | null> {
   const page1Url = articleUrl.includes("?page=")
     ? articleUrl
     : `${articleUrl}?page=1`;
 
-  const page1Res = await fetch(page1Url, {
-    headers: DEFAULT_FETCH_HEADERS,
-  });
+  let page1Res: Response;
+  try {
+    page1Res = await fetch(page1Url, {
+      headers: DEFAULT_FETCH_HEADERS,
+    });
+  } catch (err) {
+    log?.warn(`Network error fetching article page 1`, {
+      url: page1Url,
+      error: String(err),
+    });
+    return null;
+  }
 
   if (!page1Res.ok) {
     log?.warn(`Failed to fetch article page 1: HTTP ${page1Res.status}`, {
@@ -198,12 +170,6 @@ export async function fetchFullArticleContent(
   page1Content += normalizeNewlines(page1Parsed.body);
 
   const page1Text = `${page1Content}\n<${articleUrl}>`;
-
-  // 1ページ目で早期キーワードチェック
-  if (IGNORE_KEYWORDS.some((kw) => page1Text.includes(kw))) {
-    return { title: page1Parsed.title, fullContent: "", page1Text };
-  }
-
   let fullContent = page1Content;
   let currentHasNext = page1Parsed.hasNextPage;
 
@@ -227,13 +193,9 @@ export async function fetchFullArticleContent(
 
   fullContent = `${normalizeNewlines(fullContent)}\n<${articleUrl}>`;
 
-  // 全文でのキーワードチェック
-  if (IGNORE_KEYWORDS.some((kw) => fullContent.includes(kw))) {
-    return { title: page1Parsed.title, fullContent: "", page1Text };
-  }
-
   return {
     title: page1Parsed.title,
+    url: articleUrl,
     fullContent,
     page1Text,
   };

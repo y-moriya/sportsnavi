@@ -1,0 +1,12 @@
+# /etc/logrotate.d/sportsnavi または logrotate で利用する設定例
+# パスは実行環境に合わせて変更してください (例: /home/yu/project/sportsnavi/cron.log)
+
+/home/yu/project/sportsnavi/cron.log {
+    weekly
+    rotate 4
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

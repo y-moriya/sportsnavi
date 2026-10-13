@@ -10,9 +10,16 @@ export interface Config {
   dataDir: string;
   historyFilePath: string;
   lockFilePath: string;
+  cronLogPath: string;
+  maxLogSizeBytes: number;
+  maxLogFiles: number;
   axiomToken?: string;
   axiomDataset?: string;
 }
+
+export const DEFAULT_MAX_LOG_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+export const DEFAULT_MAX_LOG_FILES = 3;
+
 
 export const INCLUDE_TITLES = ["阪神"];
 
@@ -124,10 +131,18 @@ export function loadConfig(): Config {
       "https://echo-breaker.euros21st.workers.dev/api/check-article",
     notifyIntervalMs: process.env.NOTIFY_INTERVAL_MS
       ? parseInt(process.env.NOTIFY_INTERVAL_MS, 10)
-      : 90000,
+      : 1000,
     dataDir,
     historyFilePath: path.join(dataDir, "history.json"),
     lockFilePath: path.join(dataDir, "process.lock"),
+    cronLogPath:
+      process.env.CRON_LOG_PATH || path.resolve(process.cwd(), "cron.log"),
+    maxLogSizeBytes: process.env.MAX_LOG_SIZE_BYTES
+      ? parseInt(process.env.MAX_LOG_SIZE_BYTES, 10)
+      : DEFAULT_MAX_LOG_SIZE_BYTES,
+    maxLogFiles: process.env.MAX_LOG_FILES
+      ? parseInt(process.env.MAX_LOG_FILES, 10)
+      : DEFAULT_MAX_LOG_FILES,
     axiomToken: process.env.AXIOM_TOKEN,
     axiomDataset: process.env.AXIOM_DATASET,
   };

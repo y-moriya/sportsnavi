@@ -10,6 +10,7 @@
 - **高精度な重複判定**: タイトル・キーワードの除外に加え、`echo-breaker`（ベクターDB類似度判定API）による類似記事の自動スキップ。
 - **安全な多重起動防止**: ファイルロック（`data/process.lock`）により、前回のジョブ実行中（ベクター反映待ちなど）の重複実行を自動回避。
 - **ローカル既読管理**: `data/history.json` に既読URLを自動記録（48時間以上前の古い履歴は自動クリーンアップ）。
+- **自動ログローテーション**: 実行時に `cron.log` のサイズを監視し、5MB超過時に `copytruncate` 方式で自動ローテーション（デフォルト最大3世代保持）。長期運用時のファイル肥大化を自動防止。
 - **Discord チャンク分割送信**: 2,000文字を超える長文記事も複数メッセージに自動分割して完全投稿。
 
 ---
@@ -61,12 +62,16 @@ WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/yyyy"
 # 類似記事判定 API (任意, デフォルトで echo-breaker が指定されています)
 ECHO_BREAKER_URL="https://echo-breaker.euros21st.workers.dev/api/check-article"
 
-# ベクターDB反映待ち時間 (ミリ秒, デフォルト: 90000 = 90秒)
-NOTIFY_INTERVAL_MS=90000
+# Discord 送信間隔 (ミリ秒, レートリミット保護, デフォルト: 1000 = 1秒)
+NOTIFY_INTERVAL_MS=1000
 
 # Axiom ログ送信 (任意, 設定した場合のみログを Axiom へ転送)
 # AXIOM_TOKEN="xaat-..."
 # AXIOM_DATASET="personal-apps"
+
+# ログローテーション (任意)
+# MAX_LOG_SIZE_BYTES=5242880  # 1世代あたりの最大ファイルサイズ (デフォルト: 5MB)
+# MAX_LOG_FILES=3            # 保持世代数 (デフォルト: 3世代)
 ```
 
 ### 4. ビルドと手動実行確認
@@ -89,7 +94,7 @@ node dist/index.js
 
 ## ⏰ Cron 定期実行の設定
 
-15分おきに自動巡回するよう、マシンの `crontab` に登録します。
+5分おきに自動巡回するよう、マシンの `crontab` に登録します。
 
 ### 1. Node.js のフルパスを確認
 
@@ -109,16 +114,20 @@ crontab -e
 以下の設定行を末尾に追加します（パスはご自身の環境に合わせて置き換えてください）。
 
 ```cron
-# 毎時 0分, 15分, 30分, 45分 に実行
-*/15 * * * * cd /path/to/sportsnavi && /path/to/node dist/index.js >> /path/to/sportsnavi/cron.log 2>&1
+# 5分おき（毎時 0, 5, 10, ... 55分）に実行
+*/5 * * * * cd /path/to/sportsnavi && /path/to/node dist/index.js >> /path/to/sportsnavi/cron.log 2>&1
 ```
 
 #### 設定例（Raspberry Pi / Linux標準ユーザー `pi` の場合）:
 ```cron
-*/15 * * * * cd /home/pi/sportsnavi && /usr/bin/node dist/index.js >> /home/pi/sportsnavi/cron.log 2>&1
+*/5 * * * * cd /home/pi/sportsnavi && /usr/bin/node dist/index.js >> /home/pi/sportsnavi/cron.log 2>&1
 ```
 
-> **Tip**: 前回のジョブがベクターDB反映待ち（90秒）等で実行中の場合でも、ファイルロックによって次回の二重起動は自動的に安全にスキップされます。
+> **Tip**: 前回のジョブが実行中の場合でも、ファイルロックによって次回の二重起動は自動的に安全にスキップされます。
+
+#### ログローテーションについて
+- **自動ローテーション**: スクリプト実行時に `cron.log` のサイズを監視し、5MBを超えると `cron.log.1` 〜 `cron.log.3` へ自動ローテーション（`copytruncate` 方式）されます。追加設定は不要です。
+- **OS標準の logrotate を使用する場合**: システムの `/etc/logrotate.d/` 等で管理したい場合は、リポジトリに含まれる [`sportsnavi.logrotate`](./sportsnavi.logrotate) を参考にして設定してください。
 
 ---
 
