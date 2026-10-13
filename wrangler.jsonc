@@ -4,6 +4,7 @@
   "main": "src/main.ts",
   "compatibility_date": "2025-02-14",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
   "triggers": {
     "crons": ["*/15 * * * *"]
   },

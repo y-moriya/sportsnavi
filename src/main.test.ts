@@ -499,7 +499,32 @@ describe("sportsnavi main", () => {
     }
   });
 
-  it("fetchWithRetry retries on 403 status and succeeds when next attempt is 200", async () => {
+  it("fetchWithRetry returns 403 directly without retry", async () => {
+    const { fetchWithRetry } = await import("./main");
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    globalThis.fetch = vi.fn(async (_url: any, options: any) => {
+      callCount++;
+      expect(options.headers["User-Agent"]).toContain("Mozilla/5.0");
+      return new Response("Forbidden", { status: 403 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const res = await fetchWithRetry(
+        "https://example.com/test",
+        {},
+        2,
+        100,
+        new Logger({ appName: "test" }),
+      );
+      expect(res.status).toBe(403);
+      expect(callCount).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("fetchWithRetry retries on 500 status and succeeds when next attempt is 200", async () => {
     vi.useFakeTimers();
     try {
       const { fetchWithRetry } = await import("./main");
@@ -507,10 +532,9 @@ describe("sportsnavi main", () => {
       let callCount = 0;
       globalThis.fetch = vi.fn(async (_url: any, options: any) => {
         callCount++;
-        // Verify User-Agent header is set
         expect(options.headers["User-Agent"]).toContain("Mozilla/5.0");
         if (callCount === 1) {
-          return new Response("Forbidden", { status: 403 });
+          return new Response("Internal Server Error", { status: 500 });
         }
         return new Response("OK", { status: 200 });
       }) as unknown as typeof fetch;
@@ -535,25 +559,174 @@ describe("sportsnavi main", () => {
     }
   });
 
-  it("fetchNewsListPage returns empty array gracefully when API returns 403", async () => {
-    vi.useFakeTimers();
+  it("fetchNewsListPage returns empty array gracefully without retries when API returns 403", async () => {
+    const { fetchNewsListPage } = await import("./main");
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    globalThis.fetch = vi.fn(async () => {
+      callCount++;
+      return new Response("Forbidden", { status: 403 });
+    }) as unknown as typeof fetch;
+
     try {
-      const { fetchNewsListPage } = await import("./main");
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn(async () => {
+      const items = await fetchNewsListPage(new Logger({ appName: "test" }));
+      expect(items).toEqual([]);
+      expect(callCount).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("runCron skips execution when already completed for the time bucket", async () => {
+    const { runCron } = await import("./main");
+    const originalFetch = globalThis.fetch;
+    const kv = new MockKVNamespace();
+    const env: Env = {
+      SPORTSNAVI_KV: kv as unknown as KVNamespace,
+      WEBHOOK_URL: "https://discord.com/api/webhooks/test",
+    };
+
+    const scheduledTime = 1700000000000;
+    const bucket = Math.floor(scheduledTime / (15 * 60 * 1000));
+    const lockKey = `cron:done:${bucket}`;
+
+    // 既に同一バケットで完了フラグが存在する場合
+    await kv.put(lockKey, "true");
+
+    let fetchCalled = false;
+    globalThis.fetch = vi.fn(async () => {
+      fetchCalled = true;
+      return new Response("OK", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    try {
+      await runCron(env, scheduledTime);
+      expect(fetchCalled).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("runCron completes and sets done lock on success, preventing duplicate runs", async () => {
+    const { runCron } = await import("./main");
+    const originalFetch = globalThis.fetch;
+    const kv = new MockKVNamespace();
+    const env: Env = {
+      SPORTSNAVI_KV: kv as unknown as KVNamespace,
+      WEBHOOK_URL: "https://discord.com/api/webhooks/test",
+    };
+
+    const scheduledTime = 1700000000000;
+    const bucket = Math.floor(scheduledTime / (15 * 60 * 1000));
+    const lockKey = `cron:done:${bucket}`;
+
+    let fetchCount = 0;
+    globalThis.fetch = vi.fn(async (url: any) => {
+      fetchCount++;
+      const urlStr = String(url);
+      if (urlStr.includes("sports.yahoo.co.jp")) {
+        return new Response(
+          "<div class='cm-timeLine__item'><h2 class='cm-timeLine__itemTitle'>阪神タイガース最新ニュース</h2><div class='cm-timeLine__itemCredit'>デイリースポーツ</div><a class='cm-timeLine__itemArticleLink' href='https://news.yahoo.co.jp/articles/sample1'></a></div>",
+          { status: 200 },
+        );
+      }
+      if (urlStr.includes("echo-breaker")) {
+        return new Response(
+          JSON.stringify({
+            is_duplicate: false,
+            similarity_score: 0.1,
+            message: "ok",
+            debug_info: { most_similar_article: null },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (urlStr.includes("sample1")) {
+        return new Response(
+          "<article id='uamods'><header><h1>阪神最新</h1></header><div><div><p>記事本文です</p></div></div></article>",
+          { status: 200 },
+        );
+      }
+      return new Response("ok", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    try {
+      // 1回目のインスタンス実行: 正常完了して done ロックが記録される
+      await runCron(env, scheduledTime);
+      const doneVal = await kv.get(lockKey);
+      expect(doneVal).toBe("true");
+
+      const firstRunFetchCount = fetchCount;
+      expect(firstRunFetchCount).toBeGreaterThan(0);
+
+      // 2回目のインスタンス実行（重複起動）: ロックにより fetch せずスキップされる
+      await runCron(env, scheduledTime);
+      expect(fetchCount).toBe(firstRunFetchCount);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("runCron does not set done lock when 403 occurs, allowing subsequent instance to succeed", async () => {
+    const { runCron } = await import("./main");
+    const originalFetch = globalThis.fetch;
+    const kv = new MockKVNamespace();
+    const env: Env = {
+      SPORTSNAVI_KV: kv as unknown as KVNamespace,
+      WEBHOOK_URL: "https://discord.com/api/webhooks/test",
+    };
+
+    const scheduledTime = 1700000000000;
+    const bucket = Math.floor(scheduledTime / (15 * 60 * 1000));
+    const lockKey = `cron:done:${bucket}`;
+
+    // 1回目 (海外PoP想定): 403 が返る
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes("sports.yahoo.co.jp")) {
         return new Response("Forbidden", { status: 403 });
+      }
+      return new Response("ok", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    try {
+      await runCron(env, scheduledTime);
+      // ロックがセットされていないことを確認
+      expect(await kv.get(lockKey)).toBeNull();
+
+      // 2回目 (国内PoP想定): 200 が返り、正常に処理完了してロックがセットされる
+      globalThis.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes("sports.yahoo.co.jp")) {
+          return new Response(
+            "<div class='cm-timeLine__item'><h2 class='cm-timeLine__itemTitle'>阪神タイガース最新ニュース</h2><div class='cm-timeLine__itemCredit'>デイリースポーツ</div><a class='cm-timeLine__itemArticleLink' href='https://news.yahoo.co.jp/articles/sample2'></a></div>",
+            { status: 200 },
+          );
+        }
+        if (urlStr.includes("echo-breaker")) {
+          return new Response(
+            JSON.stringify({
+              is_duplicate: false,
+              similarity_score: 0.1,
+              message: "ok",
+              debug_info: { most_similar_article: null },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (urlStr.includes("sample2")) {
+          return new Response(
+            "<article id='uamods'><header><h1>阪神最新</h1></header><div><div><p>記事本文です</p></div></div></article>",
+            { status: 200 },
+          );
+        }
+        return new Response("ok", { status: 200 });
       }) as unknown as typeof fetch;
 
-      try {
-        const promise = fetchNewsListPage(new Logger({ appName: "test" }));
-        await vi.runAllTimersAsync();
-        const items = await promise;
-        expect(items).toEqual([]);
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
+      await runCron(env, scheduledTime);
+      expect(await kv.get(lockKey)).toBe("true");
     } finally {
-      vi.useRealTimers();
+      globalThis.fetch = originalFetch;
     }
   });
 });

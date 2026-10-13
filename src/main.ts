@@ -153,9 +153,7 @@ export async function fetchWithRetry(
       }
       if (
         attempt < maxRetries &&
-        (response.status === 403 ||
-          response.status === 429 ||
-          response.status >= 500)
+        (response.status === 429 || response.status >= 500)
       ) {
         if (response.body) {
           await response.body.cancel();
@@ -337,6 +335,13 @@ export async function fetchNewsListPage(
     if (!newsListPage.ok) {
       if (newsListPage.body) {
         await newsListPage.body.cancel();
+      }
+      if (newsListPage.status === 403) {
+        log.info(
+          "News list fetch returned 403 (likely geo-restriction or redundant instance), skipping this instance.",
+          { status: 403 },
+        );
+        return [];
       }
       log.warn(
         `Failed to fetch news list (status: ${newsListPage.status}), skipping this run.`,
@@ -794,11 +799,34 @@ export function createLoggerFromEnv(env: Env): Logger {
   });
 }
 
-export async function runCron(env: Env): Promise<void> {
+export async function runCron(
+  env: Env,
+  scheduledTime?: number,
+): Promise<void> {
   const log = createLoggerFromEnv(env);
-  log.info("Start cron job");
+  log.info("Start cron job", { scheduledTime });
+
+  const bucket = scheduledTime
+    ? Math.floor(scheduledTime / (15 * 60 * 1000))
+    : Math.floor(Date.now() / (15 * 60 * 1000));
+  const lockKey = `cron:done:${bucket}`;
+
   try {
+    const alreadyDone = await env.SPORTSNAVI_KV.get(lockKey);
+    if (alreadyDone !== null) {
+      log.info(
+        "Cron job already executed successfully for this interval, skipping",
+        { bucket, scheduledTime },
+      );
+      return;
+    }
+
     const newsItems = await fetchNewsListPage(log);
+    if (newsItems.length === 0) {
+      log.info("No news items retrieved, finishing cron run", { bucket });
+      return;
+    }
+
     const news = parseNewsItems(newsItems);
     const filteredNews = filterNews(news, log);
     const unregisteredNews = await filterUnregisteredNewsItems(
@@ -814,7 +842,9 @@ export async function runCron(env: Env): Promise<void> {
     // 1回のCronあたりの通知数を最大件数に絞る（残りは次回Cronで処理）
     const targetNews = unregisteredNews.slice(0, MAX_NOTIFICATIONS_PER_RUN);
     await notifyDiscord(targetNews, env, log);
-    log.info("Cron job completed successfully");
+
+    await env.SPORTSNAVI_KV.put(lockKey, "true", { expirationTtl: 30 * 60 });
+    log.info("Cron job completed successfully", { bucket });
   } catch (err) {
     log.error("Cron job failed", err);
   } finally {
@@ -837,10 +867,10 @@ export default {
   },
 
   async scheduled(
-    _event: ScheduledEvent,
+    event: ScheduledEvent,
     env: Env,
     ctx: ExecutionContext,
   ): Promise<void> {
-    ctx.waitUntil(runCron(env));
+    ctx.waitUntil(runCron(env, event.scheduledTime));
   },
 };
