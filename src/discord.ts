@@ -1,5 +1,6 @@
 import type { NewsItem } from "./types.js";
 import type { Logger } from "./logger.js";
+import { fetchWithRetry } from "./http.js";
 
 /**
  * 連続する3行以上の空行を2行に正規化（半角スペースのみの空行も適切に処理）
@@ -43,17 +44,30 @@ export async function sendDiscordMessage(
   newsItem: NewsItem,
   log?: Logger,
 ): Promise<void> {
-  const res = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      content,
-      username: newsItem.credit,
-      avatar_url:
-        "https://s.yimg.jp/images/sportsnavi/common/apple-touch-icon.png",
-    }),
-    signal: AbortSignal.timeout(10_000),
-  });
+  const res = await fetchWithRetry(
+    webhookUrl,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content,
+        username: newsItem.credit,
+        avatar_url:
+          "https://s.yimg.jp/images/sportsnavi/common/apple-touch-icon.png",
+      }),
+    },
+    {
+      timeoutMs: 10_000,
+      retries: 3,
+      label: "Discord notification",
+      onRetry: (err, attempt, delay) => {
+        log?.info(
+          `Retrying Discord notification (attempt ${attempt}) in ${delay}ms`,
+          { title: newsItem.title, error: String(err) },
+        );
+      },
+    },
+  );
 
   if (!res.ok) {
     throw new Error(

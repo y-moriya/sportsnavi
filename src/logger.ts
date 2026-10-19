@@ -1,3 +1,5 @@
+import { fetchWithRetry } from "./http.js";
+
 export type LogLevel = "info" | "warn" | "error";
 
 export interface LogPayload {
@@ -98,7 +100,8 @@ export class Logger {
       this.flushTimer = setTimeout(() => {
         this.flushTimer = null;
         this.flush().catch((err) => {
-          console.error(`[${this.appName}] Failed to flush logs to Axiom:`, err);
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[${this.appName}] Axiom flush skipped: ${msg}`);
         });
       }, 1000);
     }
@@ -123,23 +126,32 @@ export class Logger {
     const url = `https://api.axiom.co/v1/datasets/${this.dataset}/ingest`;
 
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          "Content-Type": "application/json",
+      const response = await fetchWithRetry(
+        url,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(eventsToSend),
         },
-        body: JSON.stringify(eventsToSend),
-      });
+        {
+          timeoutMs: 5_000,
+          retries: 2,
+          label: "Axiom ingest",
+        },
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(
-          `[${this.appName}] Axiom ingest failed (${response.status}): ${errorText}`,
+        console.warn(
+          `[${this.appName}] Axiom ingest non-ok (${response.status}): ${errorText.slice(0, 100)}`,
         );
       }
     } catch (err) {
-      console.error(`[${this.appName}] Error sending logs to Axiom:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[${this.appName}] Axiom telemetry unavailable: ${msg}`);
     }
   }
 }

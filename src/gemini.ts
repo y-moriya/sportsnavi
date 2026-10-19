@@ -1,3 +1,5 @@
+import { fetchWithRetry } from "./http.js";
+
 export class GeminiClient {
   private apiKey: string;
   private baseUrl =
@@ -16,19 +18,26 @@ export class GeminiClient {
     }
 
     const url = `${this.baseUrl}?key=${this.apiKey}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        content: {
-          parts: [{ text }],
+    const response = await fetchWithRetry(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-        outputDimensionality: 768,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
+        body: JSON.stringify({
+          content: {
+            parts: [{ text }],
+          },
+          outputDimensionality: 768,
+        }),
+      },
+      {
+        timeoutMs: 10_000,
+        retries: 3,
+        label: "Gemini embedding",
+      },
+    );
 
     if (!response.ok) {
       const errorText = await response.text();

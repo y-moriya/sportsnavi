@@ -63,7 +63,7 @@ export async function runBatch(): Promise<void> {
     // 4. ニュース一覧を取得
     const rawItems = await fetchNewsListPage(undefined, log);
     if (rawItems.length === 0) {
-      log.info("No news items found or fetch failed.");
+      log.info("No news items found.");
       return;
     }
 

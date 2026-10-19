@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { DEFAULT_FETCH_HEADERS } from "./config.js";
+import { fetchWithRetry } from "./http.js";
 import type { NewsItem, ArticleDetail } from "./types.js";
 import type { Logger } from "./logger.js";
 import { filterNewsList, evaluateNewsMetadata } from "./filters.js";
@@ -57,10 +58,21 @@ export async function fetchNewsListPage(
   log?: Logger,
 ): Promise<NewsItem[]> {
   try {
-    const response = await fetch(targetUrl, {
-      headers: DEFAULT_FETCH_HEADERS,
-      signal: AbortSignal.timeout(10_000),
-    });
+    const response = await fetchWithRetry(
+      targetUrl,
+      { headers: DEFAULT_FETCH_HEADERS },
+      {
+        timeoutMs: 10_000,
+        retries: 3,
+        label: "news list",
+        onRetry: (err, attempt, delay) => {
+          log?.info(
+            `Retrying news list fetch (attempt ${attempt}) in ${delay}ms`,
+            { error: String(err) },
+          );
+        },
+      },
+    );
 
     if (!response.ok) {
       log?.warn(`Failed to fetch news list: HTTP ${response.status}`, {
@@ -168,10 +180,21 @@ export async function fetchFullArticleContent(
 
   let page1Res: Response;
   try {
-    page1Res = await fetch(page1Url, {
-      headers: DEFAULT_FETCH_HEADERS,
-      signal: AbortSignal.timeout(10_000),
-    });
+    page1Res = await fetchWithRetry(
+      page1Url,
+      { headers: DEFAULT_FETCH_HEADERS },
+      {
+        timeoutMs: 10_000,
+        retries: 3,
+        label: "article page 1",
+        onRetry: (err, attempt, delay) => {
+          log?.info(
+            `Retrying article page 1 fetch (attempt ${attempt}) in ${delay}ms`,
+            { url: page1Url, error: String(err) },
+          );
+        },
+      },
+    );
   } catch (err) {
     log?.warn(`Network error fetching article page 1`, {
       url: page1Url,
@@ -202,10 +225,11 @@ export async function fetchFullArticleContent(
 
   for (let page = 2; page <= 5 && currentHasNext; page++) {
     try {
-      const pageRes = await fetch(`${articleUrl}?page=${page}`, {
-        headers: DEFAULT_FETCH_HEADERS,
-        signal: AbortSignal.timeout(10_000),
-      });
+      const pageRes = await fetchWithRetry(
+        `${articleUrl}?page=${page}`,
+        { headers: DEFAULT_FETCH_HEADERS },
+        { timeoutMs: 10_000, retries: 2, label: `article page ${page}` },
+      );
       if (!pageRes.ok) break;
 
       const pageHtml = await pageRes.text();
