@@ -101,7 +101,7 @@ export class Logger {
         this.flushTimer = null;
         this.flush().catch((err) => {
           const msg = err instanceof Error ? err.message : String(err);
-          console.warn(`[${this.appName}] Axiom flush skipped: ${msg}`);
+          console.warn(`[${this.appName}] [WARN] Axiom flush skipped: ${msg}`);
         });
       }, 1000);
     }
@@ -146,12 +146,12 @@ export class Logger {
       if (!response.ok) {
         const errorText = await response.text();
         console.warn(
-          `[${this.appName}] Axiom ingest non-ok (${response.status}): ${errorText.slice(0, 100)}`,
+          `[${this.appName}] [WARN] Axiom ingest non-ok (${response.status}): ${errorText.slice(0, 100)}`,
         );
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[${this.appName}] Axiom telemetry unavailable: ${msg}`);
+      console.warn(`[${this.appName}] [WARN] Axiom telemetry unavailable: ${msg}`);
     }
   }
 }
