@@ -147,4 +147,28 @@ describe("Network resilience and retry handling", () => {
       expect(formatted).not.toContain("EHOSTUNREACH");
     }
   });
+
+  it("Logger.flush logs warnings with [WARN] tag on Axiom failure to avoid tripping Grafana alerts", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn(async () => {
+      const err = new TypeError("fetch failed");
+      err.cause = new Error("EHOSTUNREACH");
+      throw err;
+    }) as unknown as typeof fetch;
+
+    const testLogger = new Logger({
+      appName: "sportsnavi",
+      token: "dummy-token",
+      dataset: "test-dataset",
+    });
+    testLogger.info("Test message");
+
+    await testLogger.flush();
+
+    expect(warnSpy).toHaveBeenCalled();
+    const warnCall = warnSpy.mock.calls[0].map((c) => String(c)).join(" ");
+    expect(warnCall).toContain("[sportsnavi] [WARN]");
+    expect(/(\[INFO\]|\[WARN\])/i.test(warnCall)).toBe(true);
+  });
 });
