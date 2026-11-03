@@ -12,14 +12,58 @@ export { normalizeNewlines };
 export const YAHOO_SPORTS_NAVI_URL =
   "https://sports.yahoo.co.jp/list/news/npb?genre=npb&team=5";
 
+export type BracketKind = "media" | "navigation" | "content";
+
+const MEDIA_TAG_PATTERNS: RegExp[] = [
+  /^(?:写真|フォト|連続写真|秘蔵写真|報道写真)(?:あり|を見る|見る|一覧|特集|まとめ|ギャラリー|ニュース)?$/i,
+  /^(?:写真|フォト|連続写真)[・:：\s]/i,
+  /^(?:動画|映像|ビデオ|ムービー|音声)(?:あり|を見る|見る|一覧|特集|まとめ|配信|中継)?$/i,
+  /^(?:動画|映像|ビデオ)[・:：\s]/i,
+  /^(?:イラスト|画像|図表|グラフ|チャート|インフォグラフィック|マップ|地図|図解|図版)(?:あり|を見る|見る|一覧)?$/i,
+  /^図$/,
+  /^(?:イラスト|画像|図表)[・:：\s]/i,
+  /^関連(?:記事|写真|動画|画像|リンク|情報)(?:はこちら)?$/,
+  /^過去(?:記事|ニュース)$/,
+  /^(?:外部サイト|外部リンク)$/,
+  /^(?:SNS|Twitter|ツイッター|Instagram|インスタ(?:グラム)?|YouTube|ユーチューブ|TikTok|ティックトック|Facebook|フェイスブック|X)$/i,
+  /^(?:photos?|videos?|movies?|images?|illustrations?|graphics?|charts?|maps?)$/i,
+];
+
+const NAVIGATION_TAG_PATTERNS: RegExp[] = [
+  /^(?:.+リーグ)?順位表$/,
+  /^一覧$/,
+  /^まとめ$/,
+];
+
+export function classifyBracketTag(rawTag: string): BracketKind {
+  const tag = rawTag.trim();
+  if (!tag) return "content";
+  for (const pattern of MEDIA_TAG_PATTERNS) {
+    if (pattern.test(tag)) return "media";
+  }
+  for (const pattern of NAVIGATION_TAG_PATTERNS) {
+    if (pattern.test(tag)) return "navigation";
+  }
+  return "content";
+}
+
+export function shouldRemoveBracketLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("【")) return false;
+  const match = trimmed.match(/^【([^】]+)】/);
+  if (!match) return false;
+  const tag = match[1].trim();
+  return classifyBracketTag(tag) !== "content";
+}
+
 /**
- * 【写真】などの写真・動画キャプション行を除去
+ * 写真・動画・メディアキャプション行を除去（見出しや本文ブラケットは保持）
  */
 export function filterPhotoLines(text: string): string {
   const lines = text.split("\n");
   const filteredLines = lines
     .map((line) => line.replace(/^[ \t]+|[ \t]+$/g, ""))
-    .filter((line) => !/^【[^】]+】/.test(line.trim()));
+    .filter((line) => !shouldRemoveBracketLine(line));
   return filteredLines.join("\n");
 }
 
@@ -128,7 +172,7 @@ export function parseArticleHtml(
   // 写真・メディア関連リンクを DOM から除去
   $("article a, div a").each((_, el) => {
     const linkText = $(el).text().trim();
-    if (/^【[^】]+】/.test(linkText)) {
+    if (shouldRemoveBracketLine(linkText)) {
       $(el).remove();
     }
   });
