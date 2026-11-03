@@ -52,6 +52,37 @@ describe("sportsnavi local batch", () => {
       expect(filterPhotoLines(text)).toBe(expected);
     });
 
+    it("filterPhotoLines preserves section headings and content brackets while removing media captions", () => {
+      const text = [
+        "通常の文章です。",
+        "【写真】マウンドの投手",
+        "　【写真あり】ベンチの様子",
+        "【動画】ホームランシーン",
+        "【イラスト】ドラフト1位指名予想",
+        "【セ・リーグ順位表】最新順位",
+        "【一覧】戦力外通告一覧",
+        "【関連記事】昨日の試合結果",
+        "文中に【注釈】がある文章です。",
+        "【阪神】",
+        "「ポスト」がテーマとなりそうだ。",
+        "【巨人】1位指名選手について",
+        "【一問一答】監督インタビュー",
+        "最後の文章です。",
+      ].join("\n");
+
+      const expected = [
+        "通常の文章です。",
+        "文中に【注釈】がある文章です。",
+        "【阪神】",
+        "「ポスト」がテーマとなりそうだ。",
+        "【巨人】1位指名選手について",
+        "【一問一答】監督インタビュー",
+        "最後の文章です。",
+      ].join("\n");
+
+      expect(filterPhotoLines(text)).toBe(expected);
+    });
+
     it("normalizeNewlines compresses multiple newlines", () => {
       const input = "段落1\n\n\n\n段落2\n\n\n段落3";
       expect(normalizeNewlines(input)).toBe("段落1\n\n段落2\n\n段落3");
@@ -158,6 +189,34 @@ describe("sportsnavi local batch", () => {
       expect(result.title).toBe("阪神タイガースの速報");
       expect(result.body).not.toContain("【写真】");
       expect(result.body).toContain("14日に開幕する。\n\n阪神は村上投手が先発。\n\n好投が期待される。");
+    });
+
+    it("parseArticleHtml preserves section headings like 【阪神】 while removing media links", () => {
+      const html = `
+        <article id="uamods">
+          <header><h1>【ドラフト】セ・リーグ指名動向</h1></header>
+          <div><div>
+            <p>
+              指名動向は以下の通り。<br><br>
+              <a href="https://example.com/photo">【イラスト】12球団の指名予想</a><br><br>
+              【阪神】<br><br>
+              「ポスト」がテーマとなりそうだ。<br><br>
+              【巨人】<br><br>
+              1位指名選手について公表しなかった。
+            </p>
+          </div></div>
+        </article>
+      `;
+
+      const result = parseArticleHtml(
+        html,
+        1,
+        "https://news.yahoo.co.jp/articles/sample3",
+      );
+      expect(result.title).toBe("【ドラフト】セ・リーグ指名動向");
+      expect(result.body).toContain("【阪神】");
+      expect(result.body).toContain("【巨人】");
+      expect(result.body).not.toContain("【イラスト】");
     });
   });
 
